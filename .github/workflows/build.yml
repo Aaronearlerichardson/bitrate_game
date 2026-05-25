@@ -21,9 +21,9 @@ jobs:
           - os: ubuntu-22.04-arm
             target: linux-arm64
             launcher: ./dist/bitrate_game-linux-arm64 --smoke-test
-          - os: macos-13
-            target: macos-x86_64
-            launcher: ./dist/bitrate_game-macos-x86_64 --smoke-test
+#          - os: macos-13
+#            target: macos-x86_64
+#            launcher: ./dist/bitrate_game-macos-x86_64 --smoke-test
           - os: macos-14
             target: macos-arm64
             launcher: ./dist/bitrate_game-macos-arm64 --smoke-test
@@ -36,7 +36,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
           cache: pip
           cache-dependency-path: pyproject.toml
 

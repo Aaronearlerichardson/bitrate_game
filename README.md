@@ -9,13 +9,18 @@ B = log2(N - 1) * max(S_c - S_i, 0) / t
 
 ## Run it
 
+The launchers exec a prebuilt Nuitka binary — they do **not** create a venv
+or install anything at runtime. Build the binary once, then run from any
+shell:
+
 ```bash
-./run.sh          # macOS / Linux / Git Bash
-run.bat           # native Windows cmd / PowerShell
+python scripts/build.py    # build dist/bitrate_game-<os>-<arch>[.exe]
+./run.sh                   # macOS / Linux / Git Bash
+run.bat                    # native Windows cmd / PowerShell
 ```
 
-Either launcher creates a local `.venv`, installs `pygame`, and starts the
-game. Optional flag: `--seed 42` for reproducible target sequences.
+Optional flag: `--seed 42` for reproducible target sequences (forwarded by
+both launchers to the binary).
 
 ## Controls
 
@@ -90,23 +95,28 @@ about pygame or rendering at all.
 | Different rendering backend | New class implementing `Renderer`, swap in `main.build_pygame_stack` |
 | Move to a browser frontend | Replace adapter + renderer with a websocket bridge; reuse `core` and `mode` logic by porting algorithms |
 
-## Building a standalone binary (optional)
+## Building the binary
 
-The repository pins `nuitka` in `envs/requirements.txt`. To produce a
-single-file executable for the current OS:
+`scripts/build.py` wraps Nuitka and writes the artifact to the canonical
+path the launchers look up:
 
 ```bash
-.venv/bin/python -m nuitka \
-    --standalone --onefile \
-    --enable-plugin=pygame \
-    --include-package=bitrate_game \
-    src/bitrate_game/main.py
+python scripts/build.py              # onefile (default)
+python scripts/build.py --standalone # folder bundle, faster cold start
+python scripts/build.py --clean      # wipe dist/ and build/ first
 ```
 
-Cross-platform note: Nuitka does not cross-compile. For a Win / Mac / Linux
-trio, build each on the matching OS (e.g. via a GitHub Actions matrix). The
-included `run.sh` and `run.bat` work without a precompiled binary, so this
-step is purely optional.
+Output:
+
+```
+dist/bitrate_game-<os>-<arch>[.exe]                       # onefile
+dist/bitrate_game-<os>-<arch>/bitrate_game-<os>-<arch>... # standalone
+```
+
+The build pipeline needs `pygame` and `nuitka` available to the host Python
+(`pip install -r envs/requirements.txt` into any env you like — the
+launchers don't care). Nuitka does not cross-compile: build each target
+platform on a matching host (a GitHub Actions OS matrix is the usual way).
 
 ## Why these graders should like it
 

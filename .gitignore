@@ -12,6 +12,8 @@ venv/
 *.onefile-build/
 main.bin
 main.exe
+build/
+dist/
 
 # IDE
 .idea/

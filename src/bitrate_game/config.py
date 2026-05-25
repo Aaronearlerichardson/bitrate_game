@@ -20,12 +20,14 @@ from typing import Sequence
 # N = NUM_GROUPS * GROUP_SIZE.  Bit-rate formula uses log2(N - 1).
 
 NUM_GROUPS: int = 6
-GROUP_SIZE: int = 5  # -> N = 30, log2(29) ≈ 4.858 bits per selection
+GROUP_SIZE: int = 6  # -> N = 36, log2(35) ≈ 5.129 bits per selection
 
 # The alphabet must satisfy len(ALPHABET) == NUM_GROUPS * GROUP_SIZE.
-# Letters first (most familiar to typists), then four punctuation marks to fill
-# out the 6th hex group. Order doesn't matter for the i.i.d. property.
-ALPHABET: tuple[str, ...] = tuple("abcdefghijklmnopqrstuvwxyz.,!?")
+# 26 letters + 10 digits gives a clean alphanumeric set of 36 — extending the
+# target inventory beyond the keyboard's letter row lifts the per-selection
+# information content (log2(N-1) bits) without changing the two-step
+# selection mechanic. Order doesn't matter for the i.i.d. property.
+ALPHABET: tuple[str, ...] = tuple("abcdefghijklmnopqrstuvwxyz0123456789")
 
 
 # -----------------------------------------------------------------------------

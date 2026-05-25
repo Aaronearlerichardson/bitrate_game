@@ -393,22 +393,43 @@ class PygameHexRenderer:
                                        True, config.TARGET_HIGHLIGHT_COLOR)
         s.blit(tgt, tgt.get_rect(center=(cx, cy + 18)))
 
-        # Live bit-rate stats (scored phase only)
-        snap = st.tracker_snapshot
-        if snap is not None and st.phase == Phase.SCORED:
-            bps_text = f"{snap.bit_rate:.2f} bps"
-            left = self._font_medium.render(bps_text, True, config.HUD_COLOR)
-            s.blit(left, left.get_rect(midright=(cx - 200, cy)))
-
-            score_text = f"S_c {snap.correct}   S_i {snap.incorrect}"
-            right = self._font_medium.render(score_text, True, config.HUD_COLOR)
-            s.blit(right, right.get_rect(midleft=(cx + 200, cy)))
+        # Live bit-rate readout (top-left, out of the tile area).
+        self._draw_live_bitrate(st)
 
         # Top-right timer during scored
         if st.phase == Phase.SCORED:
             t = f"{st.scored_remaining:4.1f}s"
             timer = self._font_medium.render(t, True, config.HUD_COLOR)
             s.blit(timer, timer.get_rect(topright=(config.WINDOW_W - 30, 20)))
+
+    # --- live bitrate readout ------------------------------------------
+
+    def _draw_live_bitrate(self, st: SessionState) -> None:
+        """Top-left HUD: running bit-rate + S_c / S_i counts.
+
+        Shown in both FAMILIARIZATION and SCORED so the player can see their
+        bit rate while practicing. The label names the current mode
+        (PRACTICE vs SCORED) so the player always knows which run produced
+        the number on screen.
+        """
+        if st.phase not in (Phase.FAMILIARIZATION, Phase.SCORED):
+            return
+        snap = st.tracker_snapshot
+        if snap is None:
+            return
+        s = self._screen
+        x, y = 30, 18
+        mode_text = "PRACTICE BIT RATE" if st.phase == Phase.FAMILIARIZATION else "SCORED BIT RATE"
+        label = self._font_tiny.render(mode_text,
+                                        True, config.MUTED_TEXT_COLOR)
+        s.blit(label, label.get_rect(topleft=(x, y)))
+        bps = self._font_medium.render(f"{snap.bit_rate:.2f} bps",
+                                        True, config.TARGET_HIGHLIGHT_COLOR)
+        s.blit(bps, bps.get_rect(topleft=(x, y + 20)))
+        counts = self._font_small.render(
+            f"S_c {snap.correct}   S_i {snap.incorrect}",
+            True, config.HUD_COLOR)
+        s.blit(counts, counts.get_rect(topleft=(x, y + 58)))
 
     # --- bottom bar -----------------------------------------------------
 

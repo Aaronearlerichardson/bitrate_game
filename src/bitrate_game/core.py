@@ -237,6 +237,8 @@ class Session:
     def on_advance(self) -> None:
         """User pressed the 'advance' key. Meaning depends on current phase."""
         if self._phase == Phase.WELCOME:
+            self._tracker.reset()
+            self._tracker.start()
             self._enter(Phase.FAMILIARIZATION)
         elif self._phase == Phase.RESULTS:
             # Allow restart for back-to-back grader runs without quitting.
@@ -251,14 +253,17 @@ class Session:
             self._enter(Phase.COUNTDOWN)
 
     def on_selection(self, correct: bool) -> None:
-        """Record a completed selection. Only counted during SCORED."""
-        if self._phase == Phase.SCORED:
+        """Record a completed selection during a play phase.
+
+        Counts are tracked in both FAMILIARIZATION and SCORED so the live
+        bit-rate readout works in practice too. The tracker is reset on
+        entry to COUNTDOWN, so practice stats never bleed into the scored run.
+        """
+        if self._phase in (Phase.FAMILIARIZATION, Phase.SCORED):
             if correct:
                 self._tracker.record_correct()
             else:
                 self._tracker.record_incorrect()
-        # During FAMILIARIZATION we deliberately do nothing — practice doesn't
-        # count toward the score. The mode still gives visual feedback.
 
     def tick(self) -> None:
         """Drive time-based phase transitions. Call once per frame."""

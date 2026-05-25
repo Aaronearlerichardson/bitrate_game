@@ -126,10 +126,24 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--seed", type=int, default=None,
         help="Optional RNG seed for the target sequence (for reproducible runs).",
     )
+    parser.add_argument(
+        "--smoke-test", action="store_true",
+        help="Initialize the stack, then exit. Used by CI to verify the binary boots.",
+    )
     args = parser.parse_args(argv)
 
     cfg = DEFAULT_CONFIG
     adapter, mode, renderer, session = build_pygame_stack(cfg=cfg, seed=args.seed)
+
+    if args.smoke_test:
+        try:
+            renderer.init()
+        finally:
+            renderer.shutdown()
+            adapter.shutdown()
+        print("smoke test ok")
+        return 0
+
     run_loop(adapter, mode, renderer, session)
     return 0
 

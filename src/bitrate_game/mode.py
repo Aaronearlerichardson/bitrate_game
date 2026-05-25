@@ -143,7 +143,23 @@ class HexOSpellMode:
             raise ValueError(f"slot_idx {slot_idx} out of range")
 
         if self._stage == HexStage.GROUP_SELECT:
-            # First key: commits a group. No selection completed yet.
+            # First key commits a group. If the player picked a group that
+            # doesn't contain the target, the trial fails immediately — no
+            # point letting them guess a second key for a target that can no
+            # longer be reached. This matches Shenoy et al.'s scoring of one
+            # selection per (key1, key2) pair: a wrong key1 is one wrong pair.
+            group_chars = self._cfg.chars_in_group(slot_idx)
+            if self._target not in group_chars:
+                result = SelectionResult(
+                    correct=False, target=self._target, selected=None,
+                )
+                self._last_correct = False
+                self._last_feedback_at = self._time_fn()
+                self._target = self._source.next_target()
+                self._stage = HexStage.GROUP_SELECT
+                self._active_group = None
+                return result
+
             self._active_group = slot_idx
             self._stage = HexStage.LETTER_SELECT
             return None

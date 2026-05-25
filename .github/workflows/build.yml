@@ -17,24 +17,19 @@ jobs:
         include:
           - os: ubuntu-22.04
             target: linux-x86_64
-            shell: bash
             launcher: ./dist/bitrate_game-linux-x86_64 --smoke-test
           - os: ubuntu-22.04-arm
             target: linux-arm64
-            shell: bash
             launcher: ./dist/bitrate_game-linux-arm64 --smoke-test
           - os: macos-13
             target: macos-x86_64
-            shell: bash
             launcher: ./dist/bitrate_game-macos-x86_64 --smoke-test
           - os: macos-14
             target: macos-arm64
-            shell: bash
             launcher: ./dist/bitrate_game-macos-arm64 --smoke-test
           - os: windows-latest
             target: windows-x86_64
-            shell: pwsh
-            launcher: .\dist\bitrate_game-windows-x86_64.exe --smoke-test
+            launcher: ./dist/bitrate_game-windows-x86_64.exe --smoke-test
 
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +61,7 @@ jobs:
 
       - name: Smoke test
         timeout-minutes: 2
-        shell: ${{ matrix.shell }}
+        shell: bash
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy

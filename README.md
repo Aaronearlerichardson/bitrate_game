@@ -117,16 +117,3 @@ The build pipeline needs `pygame` and `nuitka` available to the host Python
 (`pip install -r envs/requirements.txt` into any env you like — the
 launchers don't care). Nuitka does not cross-compile: build each target
 platform on a matching host (a GitHub Actions OS matrix is the usual way).
-
-## Why these graders should like it
-
-- **Calvin (200+ wpm typist):** 6 keys, two presses per selection, very low
-  per-key latency. He should be able to chord through targets quickly once
-  the spatial mapping is internalized.
-- **Elizabeth (UI-sensitive):** clean visual layout, immediate per-selection
-  feedback, animated countdown, polished results screen.
-- **Emma (info theory):** N = 30 is a deliberate choice — large enough to
-  push log2(N-1) close to 5 bits per selection but not so large that the
-  player can't quickly localize the target within a group. The i.i.d.
-  guarantee is enforced at the source level (one line in `core.py`); there
-  are no hidden language-model effects to exploit.

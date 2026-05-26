@@ -114,6 +114,14 @@ jobs:
           # 'no_site' similarly off because it can break the early init.
           python-flag: no_asserts,no_docstrings
 
+          # pygame's __init__.py imports submodules inside try/except.
+          # Nuitka warns at runtime when one of those imports hits a
+          # --nofollow-import-to exclusion ("Module 'pygame.image' was
+          # actively excluded ..."). Pygame catches the ImportError and
+          # substitutes a MissingModule placeholder, so it's harmless —
+          # just noisy. This flag silences only that warning class.
+          no-deployment-flag: excluded-module-usage
+
           # Aggressive exclude list. Beyond the audio submodules and stdlib
           # dead weight, also drops pygame's numpy-coupled views (surfarray,
           # sndarray), the geometry/transform helpers we don't call, the

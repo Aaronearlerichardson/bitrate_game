@@ -171,6 +171,14 @@ def run_nuitka(*, onefile: bool, clean: bool, slim: bool, upx: bool) -> int:
             # to stderr on every launch. 'no_site' similarly off because
             # site.py setup happens around the same init step.
             "--python-flag=no_asserts,no_docstrings",
+            # pygame's __init__.py imports its submodules inside try/except
+            # blocks. Nuitka's default behavior is to emit a RuntimeWarning
+            # when such an import hits a `--nofollow-import-to` exclusion
+            # ("Module 'pygame.image' was actively excluded ..."). It's
+            # harmless — pygame catches the ImportError and uses a
+            # MissingModule placeholder — but it's noisy on every launch.
+            # Suppress just this one warning class:
+            "--no-deployment-flag=excluded-module-usage",
         ]
         # Static-link libpython where possible. Saves ~5 MB on Linux,
         # which is by far the most bloated platform for pygame builds.

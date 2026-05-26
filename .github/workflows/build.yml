@@ -122,6 +122,18 @@ jobs:
           # just noisy. This flag silences only that warning class.
           no-deployment-flag: excluded-module-usage
 
+          # When the missing submodule is "urgent" (image, transform,
+          # joystick, mouse, sprite, pixelcopy), pygame ALSO emits its
+          # own RuntimeWarning of the form "import <name>: <reason>" via
+          # warnings.warn(). The package __init__.py installs a Python
+          # filter for that, but on the Nuitka-Action build the filter
+          # sometimes isn't active in time. PYTHONWARNINGS=ignore::Runtime
+          # Warning is parsed by Python during interpreter init — before
+          # any user code — so it's strictly stronger than runtime
+          # `warnings.filterwarnings`. Cost: also suppresses any other
+          # RuntimeWarning the game might emit, which we don't rely on.
+          force-runtime-environment-variable: PYTHONWARNINGS=ignore::RuntimeWarning
+
           # Aggressive exclude list. Beyond the audio submodules and stdlib
           # dead weight, also drops pygame's numpy-coupled views (surfarray,
           # sndarray), the geometry/transform helpers we don't call, the

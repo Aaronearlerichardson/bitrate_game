@@ -179,6 +179,11 @@ def run_nuitka(*, onefile: bool, clean: bool, slim: bool, upx: bool) -> int:
             # MissingModule placeholder — but it's noisy on every launch.
             # Suppress just this one warning class:
             "--no-deployment-flag=excluded-module-usage",
+            # And the corresponding *pygame-emitted* RuntimeWarning ("import
+            # image: No module named ..."), set up via PYTHONWARNINGS so the
+            # filter is installed during Python init — before any user code
+            # runs, which is sometimes necessary on the CI build path.
+            "--force-runtime-environment-variable=PYTHONWARNINGS=ignore::RuntimeWarning",
         ]
         # Static-link libpython where possible. Saves ~5 MB on Linux,
         # which is by far the most bloated platform for pygame builds.

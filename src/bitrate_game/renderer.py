@@ -366,13 +366,23 @@ class PygameHexRenderer:
 
     def _draw_group_chars(self, rect, chars, target_char, *,
                            highlight_target: bool, font) -> None:
-        """Render the group's chars in a horizontal row centered in the tile."""
+        """Render the group's chars in a 2-row x 3-col mini-grid.
+
+        The mini-grid mirrors the full board's 3-col x 2-row slot arrangement,
+        so chars[0..5] sit at the same relative positions they will occupy
+        when the group expands into stage 2. This trains the player's spatial
+        expectation: a target seen in the bottom-right of its group will
+        appear in the bottom-right slot of the board after the first press.
+        """
         s = self._screen
-        n = len(chars)
-        cell_w = rect.width / n
+        cols, rows = 3, 2
+        cell_w = rect.width / cols
+        cell_h = rect.height / rows
         for i, ch in enumerate(chars):
-            cx = rect.x + cell_w * (i + 0.5)
-            cy = rect.y + rect.height // 2 + 8  # nudge below the key label
+            col = i % cols
+            row = i // cols
+            cx = rect.x + cell_w * (col + 0.5)
+            cy = rect.y + cell_h * (row + 0.5)
             color = config.TEXT_COLOR
             if highlight_target and ch == target_char:
                 color = config.TARGET_HIGHLIGHT_COLOR

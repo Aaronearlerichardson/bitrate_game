@@ -153,10 +153,25 @@ def _looks_like_native_lib(name: str) -> bool:
     return ".so." in lower
 
 
-def main() -> int:
-    import pygame  # noqa: PLC0415 — defer so we can print the path on error
+def _locate_pygame() -> Path:
+    """Return pygame's package directory WITHOUT importing it.
 
-    pygame_dir = Path(pygame.__file__).resolve().parent
+    Importing pygame loads its C extensions (mixer.pyd, etc.) into the
+    current process, and on Windows you can't delete a DLL that's mapped
+    into a live process — `os.unlink` raises PermissionError [WinError 5].
+    importlib.util.find_spec resolves the package via the import machinery
+    without executing __init__.py or loading any extension modules.
+    """
+    import importlib.util  # noqa: PLC0415
+
+    spec = importlib.util.find_spec("pygame")
+    if spec is None or spec.origin is None:
+        raise RuntimeError("pygame not found on sys.path")
+    return Path(spec.origin).resolve().parent
+
+
+def main() -> int:
+    pygame_dir = _locate_pygame()
     print(f"pygame at: {pygame_dir}")
 
     removed_count = 0

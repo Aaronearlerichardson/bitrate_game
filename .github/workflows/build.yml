@@ -89,12 +89,14 @@ jobs:
           include-package: bitrate_game
 
           lto: yes
-          # 'yes' forces static-link of libpython. Previously 'auto' fell
-          # back to dynamic on the Linux runner (libpython3.13.so.1.0 ended
-          # up bundled, ~6.8 MB). setup-python@v5's Linux build ships the
-          # static archive at ${pythonLocation}/lib/python3.X/config-.../
-          # libpython3.X.a — if 'yes' errors, fall back to 'auto'.
-          static-libpython: yes
+          # Tried 'yes' to force static-link of libpython (would save ~6.8 MB
+          # of bundled libpython3.13.so on Linux), but setup-python's CPython
+          # builds on Linux/Windows don't ship the static archive in a form
+          # Nuitka accepts — fails with "a static libpython is either not
+          # found or not supported for this Python (CPython Official)
+          # installation". 'auto' falls back to dynamic where static isn't
+          # available; strip_pygame.py alone gets us under the size budget.
+          static-libpython: auto
           python-flag: no_site,no_asserts,no_warnings,no_docstrings
 
           # Aggressive exclude list. Beyond the audio submodules and stdlib

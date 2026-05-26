@@ -85,7 +85,14 @@ def _handle_event(ev: InputEvent, mode: GameMode, session: Session) -> bool:
         return True
 
     if ev.type == InputEventType.START_SCORED:
-        if session.phase == Phase.FAMILIARIZATION:
+        # ENTER from the welcome screen jumps straight into the scored
+        # countdown; the welcome screen's controls bar promises this. From
+        # familiarization, it ends practice and starts the scored run.
+        if session.phase == Phase.WELCOME:
+            session.on_advance()       # WELCOME -> FAMILIARIZATION
+            session.on_start_scored()  # FAMILIARIZATION -> COUNTDOWN
+            mode.reset()
+        elif session.phase == Phase.FAMILIARIZATION:
             session.on_start_scored()
             mode.reset()  # clear any partial stage-1 state
         return True

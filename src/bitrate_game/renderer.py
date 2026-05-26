@@ -72,7 +72,25 @@ class PygameHexRenderer:
         pg = self._pygame
         pg.init()
         pg.display.set_caption("Bitrate Game — Hex-o-Spell")
-        self._screen = pg.display.set_mode((config.WINDOW_W, config.WINDOW_H))
+
+        # Fit the window to the host display so it never overflows on
+        # smaller laptops or under DPI scaling. pygame.display.Info()
+        # returns the dimensions of the area pygame can actually use,
+        # so this works whether the OS reports 1366x768 native or a
+        # DPI-scaled effective resolution.
+        info = pg.display.Info()
+        fit_w = min(config.WINDOW_W, int(info.current_w * 0.95))
+        fit_h = min(config.WINDOW_H, int(info.current_h * 0.88))
+        # Renderer layout math reads these constants directly throughout
+        # this module, so update them to the actual window size we chose.
+        config.WINDOW_W = fit_w
+        config.WINDOW_H = fit_h
+        # RESIZABLE lets the user drag the window edges. The adapter
+        # listens for pygame's VIDEORESIZE event and calls set_mode again
+        # with the new dimensions — the renderer's layout math reads
+        # config.WINDOW_W / WINDOW_H each frame, so the UI reflows on the
+        # next draw without any extra signalling.
+        self._screen = pg.display.set_mode((fit_w, fit_h), pg.RESIZABLE)
         # SysFont(None, ...) picks a reasonable system font on every platform
         # without bundling a TTF.
         self._font_huge = pg.font.SysFont(None, 160)
@@ -95,7 +113,11 @@ class PygameHexRenderer:
     # --- top-level draw -------------------------------------------------
 
     def draw(self, session_state: SessionState, mode_view: object) -> None:
-        assert self._screen is not None, "init() must be called first"
+        # Re-fetch the surface each frame: pygame.display.set_mode() may
+        # invalidate the previous reference when the window is resized.
+        self._screen = self._pygame.display.get_surface()
+        if self._screen is None:
+            return  # display gone (window closed); loop will exit shortly
         self._screen.fill(config.BG_COLOR)
 
         phase = session_state.phase

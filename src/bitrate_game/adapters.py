@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Optional, Protocol, Sequence
 
+from . import config
 from .config import GameConfig
 
 
@@ -102,6 +103,16 @@ class PygameKeyboardAdapter:
         for ev in pg.event.get():
             if ev.type == pg.QUIT:
                 out.append(InputEvent(InputEventType.WINDOW_CLOSE))
+            elif ev.type == pg.VIDEORESIZE:
+                # User dragged the window edge. Recreate the display
+                # surface at the new size and update the layout constants
+                # the renderer reads each frame. A floor of 800x500 keeps
+                # the hex board legible — anything smaller crops tiles.
+                new_w = max(ev.w, 800)
+                new_h = max(ev.h, 500)
+                pg.display.set_mode((new_w, new_h), pg.RESIZABLE)
+                config.WINDOW_W = new_w
+                config.WINDOW_H = new_h
             elif ev.type == pg.KEYDOWN:
                 if ev.key in self._slot_map:
                     out.append(InputEvent(InputEventType.SLOT,

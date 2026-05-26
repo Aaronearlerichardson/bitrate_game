@@ -104,7 +104,13 @@ jobs:
           # installation". 'auto' falls back to dynamic where static isn't
           # available; strip_pygame.py alone gets us under the size budget.
           static-libpython: auto
-          python-flag: no_site,no_asserts,no_warnings,no_docstrings
+          # Dropped 'no_site' from this list: it skips site.py at startup,
+          # which in turn means CPython's _Py_InitializeMain never sets up
+          # the warnings filter properly and prints "'import warnings'
+          # failed; ModuleNotFoundError" on every launch (cosmetic but
+          # confusing for end users). Size cost is ~10 KB. The other three
+          # flags strip asserts/warning-emission/docstrings — safe.
+          python-flag: no_asserts,no_warnings,no_docstrings
 
           # Aggressive exclude list. Beyond the audio submodules and stdlib
           # dead weight, also drops pygame's numpy-coupled views (surfarray,
@@ -180,7 +186,9 @@ jobs:
           cd dist
           chmod +x bitrate_game-linux-* bitrate_game-macos-* 2>/dev/null || true
           ls -lh
-          zip -9 ../bitrate_game-binaries.zip *
+          # Explicit glob — only the binaries, never any report XML or
+          # other stray file that might land in dist/ via the download.
+          zip -9 ../bitrate_game-binaries.zip bitrate_game-*
           ls -lh ../bitrate_game-binaries.zip
 
       - uses: actions/upload-artifact@v4

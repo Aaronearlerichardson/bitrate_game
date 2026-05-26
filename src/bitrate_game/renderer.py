@@ -236,16 +236,26 @@ class PygameGridRenderer:
     def _draw_results(self, st: SessionState) -> None:
         s = self._screen
         cx = config.WINDOW_W // 2
+        H = config.WINDOW_H
         snap = st.final_snapshot
         if snap is None:
             return
 
+        # Anchors: title near top, hint near bottom, big bps roughly a
+        # quarter of the way down between them, breakdown lines packed
+        # between the bps and the hint. Line height is capped at 42 so
+        # the layout doesn't look stretched on tall windows, but shrinks
+        # to fit on short ones — no overlap at WINDOW_H >= 580.
+        title_y = max(60, int(H * 0.10))
+        hint_y = H - 30
+        big_y = title_y + (hint_y - title_y) // 4
+
         title = self._font_large.render("Run complete", True, config.TEXT_COLOR)
-        s.blit(title, title.get_rect(center=(cx, 140)))
+        s.blit(title, title.get_rect(center=(cx, title_y)))
 
         bps_str = f"{snap.bit_rate:.2f} bits / sec"
         big = self._font_huge.render(bps_str, True, config.TARGET_HIGHLIGHT_COLOR)
-        s.blit(big, big.get_rect(center=(cx, 320)))
+        s.blit(big, big.get_rect(center=(cx, big_y)))
 
         breakdown = [
             f"N (alphabet size) = {snap.n}",
@@ -254,14 +264,18 @@ class PygameGridRenderer:
             f"t (elapsed seconds) = {snap.elapsed_sec:.2f}",
             f"B = log2(N-1) * max(S_c - S_i, 0) / t",
         ]
+        block_top = big_y + big.get_height() // 2 + 40
+        block_bottom = hint_y - 40
+        gaps = max(1, len(breakdown) - 1)
+        line_h = max(28, min(42, (block_bottom - block_top) // gaps))
         for i, line in enumerate(breakdown):
             surf = self._font_medium.render(line, True, config.TEXT_COLOR)
-            s.blit(surf, surf.get_rect(center=(cx, 460 + i * 42)))
+            s.blit(surf, surf.get_rect(center=(cx, block_top + i * line_h)))
 
         hint = self._font_small.render(
             "SPACE  return to welcome screen     ESC  quit",
             True, config.MUTED_TEXT_COLOR)
-        s.blit(hint, hint.get_rect(center=(cx, config.WINDOW_H - 60)))
+        s.blit(hint, hint.get_rect(center=(cx, hint_y)))
 
     # ====================================================================
     # Gameplay board
@@ -393,8 +407,14 @@ class PygameGridRenderer:
         """
         pg = self._pygame
         s = self._screen
-        pad_top = 50      # clear of the corner key label
-        pad_other = 18
+        # Padding chosen to give the mini-grid as much room as possible
+        # while still clearing the key-label box in the top-left corner.
+        # The label spans rect.x..rect.x+~40 in x and rect.y+8..rect.y+42
+        # in y, so a 40-px top pad keeps the grid below it. The grid is
+        # then horizontally centered with 8-px side gutters, which puts it
+        # to the right of the label without colliding.
+        pad_top = 40
+        pad_other = 8
         avail_x = rect.x + pad_other
         avail_y = rect.y + pad_top
         avail_w = rect.width - 2 * pad_other

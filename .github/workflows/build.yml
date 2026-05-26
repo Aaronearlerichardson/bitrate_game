@@ -55,14 +55,6 @@ jobs:
       - name: Install runtime deps
         run: pip install "pygame>=2.5"
 
-      - name: Install UPX (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y upx-ucl
-
-      - name: Install UPX (Windows)
-        if: runner.os == 'Windows'
-        run: choco install upx -y --no-progress
-
       # --- Nuitka build via Nuitka-Action (Option A) ---
       #
       # Slim flags drop everything the game doesn't use. Verified by grepping
@@ -90,10 +82,13 @@ jobs:
           static-libpython: auto
           python-flag: no_site,no_asserts,no_warnings,no_docstrings
 
-          # Stdlib excludes: tkinter is huge (~2 MB), unittest/test/pydoc/
-          # idlelib/ensurepip are dead weight in a shipped game. Verified
-          # nothing in src/bitrate_game or pygame's runtime path imports them.
-          nofollow-import-to: pygame.mixer,pygame.mixer_music,pygame.image,pygame.midi,pygame.camera,pygame.cdrom,pygame._sdl2.audio,pygame._sdl2.mixer,tkinter,unittest,test,pydoc,idlelib,ensurepip,lib2to3,turtle,turtledemo
+          # Aggressive exclude list. Beyond the audio submodules and stdlib
+          # dead weight, also drops pygame's numpy-coupled views (surfarray,
+          # sndarray), the geometry/transform helpers we don't call, the
+          # clipboard module, and the bundled examples/tests. numpy itself
+          # is excluded in case any of those pull it in transitively (a 30 MB
+          # win if so).
+          nofollow-import-to: pygame.mixer,pygame.mixer_music,pygame.image,pygame.midi,pygame.camera,pygame.cdrom,pygame._sdl2.audio,pygame._sdl2.mixer,pygame.surfarray,pygame.sndarray,pygame.scrap,pygame.transform,pygame.gfxdraw,pygame.fastevent,pygame.examples,pygame.tests,pygame.docs,numpy,tkinter,unittest,test,pydoc,idlelib,ensurepip,lib2to3,turtle,turtledemo
 
           # Nuitka-Action only exposes --noinclude-data-files (not
           # --noinclude-dlls). Bundled SDL .so/.dylib files on Linux/macOS are
@@ -102,6 +97,11 @@ jobs:
           # On Windows, vendored DLLs may slip through — acceptable since the
           # Windows binary was already ~9.7 MB.
           noinclude-data-files: '*SDL2_mixer*,*SDL2_image*,*libogg*,*libvorbis*,*libvorbisfile*,*libFLAC*,*libopus*,*libopusfile*,*libmpg123*,*libwavpack*,*libmodplug*,*libfluidsynth*,*libsndfile*,*libwebp*,*libjpeg*,*libtiff*,*libpulse*,*libpulsecommon*,*libasound*,*libsndio*,*libjack*,*libpipewire*,*portmidi*'
+
+          # Emit a build report we can grep for unexpectedly-large modules.
+          # The report names every module/data file that ended up in the
+          # binary, with sizes. Uploaded as an artifact below.
+          report: nuitka-report.xml
 
           output-file: bitrate_game-${{ matrix.target }}${{ matrix.ext }}
 
@@ -112,19 +112,14 @@ jobs:
           mv build/bitrate_game-${{ matrix.target }}${{ matrix.ext }} dist/
           ls -lh dist/
 
-      # UPX gives ~30–50% reduction on Nuitka onefile binaries by
-      # re-compressing the bootstrap with LZMA. Skipped on macOS — UPX'd
-      # Mach-O binaries fail Apple's codesigning checks and refuse to run.
-      # Smoke test runs AFTER compression so we test the actual artifact.
-      - name: Compress with UPX
-        if: runner.os != 'macOS'
-        shell: bash
-        run: |
-          BIN=dist/bitrate_game-${{ matrix.target }}${{ matrix.ext }}
-          BEFORE=$(stat -c%s "$BIN" 2>/dev/null || stat -f%z "$BIN")
-          upx --best --lzma "$BIN"
-          AFTER=$(stat -c%s "$BIN" 2>/dev/null || stat -f%z "$BIN")
-          echo "UPX: $BEFORE -> $AFTER bytes"
+      - name: Upload Nuitka report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuitka-report-${{ matrix.target }}
+          path: nuitka-report.xml
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Smoke test
         timeout-minutes: 2

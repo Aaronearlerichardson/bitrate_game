@@ -40,6 +40,7 @@ BUILD_DIR = REPO_ROOT / "build"
 # Verified by grepping src/bitrate_game for pygame.* usage: only event,
 # display, font.SysFont, time.Clock, draw, Rect, Surface are referenced.
 UNUSED_PYGAME_MODULES = [
+    # Audio / image / MIDI / camera — game has no sound or images.
     "pygame.mixer",
     "pygame.mixer_music",
     "pygame.image",
@@ -48,9 +49,21 @@ UNUSED_PYGAME_MODULES = [
     "pygame.cdrom",
     "pygame._sdl2.audio",
     "pygame._sdl2.mixer",
-    # Stdlib modules a shipped game has no reason to include. tkinter alone
-    # is ~2 MB; the rest is dead weight (CPython test suite, IDLE, pydoc,
-    # ensurepip's vendored wheel, 2to3, turtle).
+    # NumPy-coupled pygame views and other pygame submodules unused by
+    # this game (renderer only uses pygame.draw + pygame.font.SysFont).
+    "pygame.surfarray",
+    "pygame.sndarray",
+    "pygame.scrap",
+    "pygame.transform",
+    "pygame.gfxdraw",
+    "pygame.fastevent",
+    "pygame.examples",
+    "pygame.tests",
+    "pygame.docs",
+    # numpy itself — defensive in case any pygame submodule pulls it in
+    # transitively. 30+ MB if it sneaks into the bundle.
+    "numpy",
+    # Stdlib modules a shipped game has no reason to include.
     "tkinter",
     "unittest",
     "test",

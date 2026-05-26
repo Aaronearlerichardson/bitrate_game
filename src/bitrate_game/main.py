@@ -14,8 +14,8 @@ from typing import Optional
 from .adapters import InputAdapter, InputEvent, InputEventType, PygameKeyboardAdapter
 from .config import DEFAULT_CONFIG, GameConfig
 from .core import IIDUniformTargetSource, Phase, Session
-from .mode import GameMode, HexOSpellMode
-from .renderer import PygameHexRenderer, Renderer
+from .mode import GameMode, GridQuestMode
+from .renderer import PygameGridRenderer, Renderer
 
 
 def build_pygame_stack(
@@ -28,13 +28,13 @@ def build_pygame_stack(
     is the entire 'switch frontends' migration.
     """
     target_source = IIDUniformTargetSource(alphabet=cfg.alphabet, seed=seed)
-    mode = HexOSpellMode(cfg=cfg, target_source=target_source)
+    mode = GridQuestMode(cfg=cfg, target_source=target_source)
     session = Session(
         n=cfg.n,
         scored_duration_sec=cfg.scored_duration_sec,
         countdown_sec=cfg.countdown_sec,
     )
-    renderer = PygameHexRenderer(cfg=cfg)
+    renderer = PygameGridRenderer(cfg=cfg)
     adapter = PygameKeyboardAdapter(cfg=cfg)
     return adapter, mode, renderer, session
 
@@ -129,7 +129,7 @@ def _print_final_results(session: Session) -> None:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Hex-o-Spell bit-rate game (Science Corp SWE homework)"
+        description="GridQuest bit-rate game (Science Corp SWE homework)"
     )
     parser.add_argument(
         "--seed", type=int, default=None,

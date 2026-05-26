@@ -31,12 +31,16 @@ class TargetSource(Protocol):
 
     The Protocol form lets us swap in test doubles or alternative samplers
     (e.g. for replay determinism) without inheriting from a base class.
+
+    Targets are integers in [0, N) where N is the size of the alphabet.
+    The mode decides what each integer *means* (e.g. for GridQuest,
+    `divmod(target, num_tiles)` gives (group_idx, slot_idx)).
     """
 
     @property
-    def alphabet(self) -> Sequence[str]: ...
+    def alphabet(self) -> Sequence[int]: ...
 
-    def next_target(self) -> str: ...
+    def next_target(self) -> int: ...
 
 
 class IIDUniformTargetSource:
@@ -47,17 +51,18 @@ class IIDUniformTargetSource:
     desired (e.g. for grader-comparable runs).
     """
 
-    def __init__(self, alphabet: Sequence[str], seed: Optional[int] = None) -> None:
-        if len(alphabet) < 3:
-            raise ValueError(f"alphabet must have >= 3 entries, got {len(alphabet)}")
-        self._alphabet: tuple[str, ...] = tuple(alphabet)
+    def __init__(self, alphabet: Sequence[int], seed: Optional[int] = None) -> None:
+        items = tuple(alphabet)
+        if len(items) < 3:
+            raise ValueError(f"alphabet must have >= 3 entries, got {len(items)}")
+        self._alphabet: tuple[int, ...] = items
         self._rng = random.Random(seed)
 
     @property
-    def alphabet(self) -> tuple[str, ...]:
+    def alphabet(self) -> tuple[int, ...]:
         return self._alphabet
 
-    def next_target(self) -> str:
+    def next_target(self) -> int:
         # Critically: we do NOT condition on the previous target. Repeats
         # are allowed and expected. This is what makes the sequence i.i.d.
         return self._rng.choice(self._alphabet)

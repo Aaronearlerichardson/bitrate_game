@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bitrate_game"
 version = "0.1.0"
-description = "Hex-o-Spell-inspired bit-rate maximization game"
+description = "GridQuest — spatial 3x3 selection bit-rate maximization game"
 requires-python = ">=3.10"
 dependencies = [
     "pygame>=2.5",

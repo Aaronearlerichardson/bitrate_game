@@ -55,6 +55,14 @@ jobs:
       - name: Install runtime deps
         run: pip install "pygame>=2.5"
 
+      - name: Install UPX (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y upx-ucl
+
+      - name: Install UPX (Windows)
+        if: runner.os == 'Windows'
+        run: choco install upx -y --no-progress
+
       # --- Nuitka build via Nuitka-Action (Option A) ---
       #
       # Slim flags drop everything the game doesn't use. Verified by grepping
@@ -82,7 +90,10 @@ jobs:
           static-libpython: auto
           python-flag: no_site,no_asserts,no_warnings,no_docstrings
 
-          nofollow-import-to: pygame.mixer,pygame.mixer_music,pygame.image,pygame.midi,pygame.camera,pygame.cdrom,pygame._sdl2.audio,pygame._sdl2.mixer
+          # Stdlib excludes: tkinter is huge (~2 MB), unittest/test/pydoc/
+          # idlelib/ensurepip are dead weight in a shipped game. Verified
+          # nothing in src/bitrate_game or pygame's runtime path imports them.
+          nofollow-import-to: pygame.mixer,pygame.mixer_music,pygame.image,pygame.midi,pygame.camera,pygame.cdrom,pygame._sdl2.audio,pygame._sdl2.mixer,tkinter,unittest,test,pydoc,idlelib,ensurepip,lib2to3,turtle,turtledemo
 
           # Nuitka-Action only exposes --noinclude-data-files (not
           # --noinclude-dlls). Bundled SDL .so/.dylib files on Linux/macOS are
@@ -100,6 +111,20 @@ jobs:
           mkdir -p dist
           mv build/bitrate_game-${{ matrix.target }}${{ matrix.ext }} dist/
           ls -lh dist/
+
+      # UPX gives ~30–50% reduction on Nuitka onefile binaries by
+      # re-compressing the bootstrap with LZMA. Skipped on macOS — UPX'd
+      # Mach-O binaries fail Apple's codesigning checks and refuse to run.
+      # Smoke test runs AFTER compression so we test the actual artifact.
+      - name: Compress with UPX
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          BIN=dist/bitrate_game-${{ matrix.target }}${{ matrix.ext }}
+          BEFORE=$(stat -c%s "$BIN" 2>/dev/null || stat -f%z "$BIN")
+          upx --best --lzma "$BIN"
+          AFTER=$(stat -c%s "$BIN" 2>/dev/null || stat -f%z "$BIN")
+          echo "UPX: $BEFORE -> $AFTER bytes"
 
       - name: Smoke test
         timeout-minutes: 2

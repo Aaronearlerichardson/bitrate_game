@@ -48,6 +48,18 @@ UNUSED_PYGAME_MODULES = [
     "pygame.cdrom",
     "pygame._sdl2.audio",
     "pygame._sdl2.mixer",
+    # Stdlib modules a shipped game has no reason to include. tkinter alone
+    # is ~2 MB; the rest is dead weight (CPython test suite, IDLE, pydoc,
+    # ensurepip's vendored wheel, 2to3, turtle).
+    "tkinter",
+    "unittest",
+    "test",
+    "pydoc",
+    "idlelib",
+    "ensurepip",
+    "lib2to3",
+    "turtle",
+    "turtledemo",
 ]
 
 # DLL/SO/dylib name patterns Nuitka's pygame plugin would otherwise bundle

@@ -139,31 +139,57 @@ class PygameHexRenderer:
     def _draw_welcome(self) -> None:
         """Title + preview board with a worked example + controls.
 
-        The preview board is rendered with the *same* slot-drawing code as
-        gameplay, just at a smaller scale and with hand-constructed slots
-        for the example. This guarantees the player sees exactly what they'll
-        see in the real game.
+        Layout is adaptive: titles anchor to the top, the controls bar
+        anchors to the bottom, the step list anchors above the controls,
+        and the example board fills whatever vertical space remains in
+        between. This way the controls/steps never collide on shorter
+        windows (e.g. when the auto-fit lands at 88% of a 768p screen)
+        and the example board grows when the user enlarges the window.
         """
         s = self._screen
         cx = config.WINDOW_W // 2
 
-        # Title
+        # --- Fixed anchors -------------------------------------------------
+        title_y = 55
+        subtitle_y = 95
+        controls_y = config.WINDOW_H - 30
+
+        # Steps: 4 lines stacked just above the controls bar.
+        steps_text = [
+            "STEP 1   Find the YELLOW target letter ({tgt!r}). It lives inside one tile.",
+            "         Press the key labeled on that tile — its corner shows Q/W/E/A/S/D.",
+            "STEP 2   The chosen tile's letters then spread across all six tiles, one per tile.",
+            "         Press the key for the tile where your target letter has moved.",
+        ]
+        step_line_h = 28
+        # Bottom of the last step's *center* — its text descends ~13px
+        # further, so leave at least 30px between center and controls
+        # to keep a comfortable visible gap.
+        steps_bottom_y = controls_y - 45
+        steps_top_y = steps_bottom_y - step_line_h * (len(steps_text) - 1)
+
+        # Board: fills the space between subtitle and the step list.
+        board_top = subtitle_y + 25
+        board_bottom = steps_top_y - 25
+        board_h = max(180, min(360, board_bottom - board_top))
+        board_w = min(760, config.WINDOW_W - 100)
+        board_cy = (board_top + board_bottom) // 2
+
+        # --- Draw ----------------------------------------------------------
         title = self._font_large.render("Hex-o-Spell Bit-Rate Game",
                                         True, config.TEXT_COLOR)
-        s.blit(title, title.get_rect(center=(cx, 70)))
+        s.blit(title, title.get_rect(center=(cx, title_y)))
 
         subtitle = self._font_small.render(
             f"Type one letter at a time using two key presses.   "
             f"Alphabet: {self._cfg.n} characters in {self._cfg.num_groups} groups of {self._cfg.group_size}.",
             True, config.MUTED_TEXT_COLOR)
-        s.blit(subtitle, subtitle.get_rect(center=(cx, 110)))
+        s.blit(subtitle, subtitle.get_rect(center=(cx, subtitle_y)))
 
-        # Preview board (scaled-down stage-1 view with example target)
         example_target = "e" if "e" in self._cfg.alphabet else self._cfg.alphabet[0]
         example_view = self._make_example_view(example_target)
-
-        board_rect = self._pygame.Rect(0, 0, 760, 360)
-        board_rect.center = (cx, 320)
+        board_rect = self._pygame.Rect(0, 0, board_w, board_h)
+        board_rect.center = (cx, board_cy)
         rects = self._slot_rects(board_rect, gutter=14, margin=0)
         self._draw_slots_in(
             example_view, rects,
@@ -172,30 +198,22 @@ class PygameHexRenderer:
             flash_active=False,
         )
 
-        # Mini HUD overlay on the preview to label it
         prompt = self._font_small.render("EXAMPLE TARGET", True, config.MUTED_TEXT_COLOR)
         s.blit(prompt, prompt.get_rect(center=(cx, board_rect.centery - 18)))
         tgt = self._font_large.render(example_target.upper(),
                                        True, config.TARGET_HIGHLIGHT_COLOR)
         s.blit(tgt, tgt.get_rect(center=(cx, board_rect.centery + 22)))
 
-        # Step-by-step instructions
-        steps = [
-            f"STEP 1   Find the YELLOW target letter ('{example_target}'). It lives inside one tile.",
-            f"         Press the key labeled on that tile — its corner shows Q/W/E/A/S/D.",
-            "STEP 2   The chosen tile's letters then spread across all six tiles, one per tile.",
-            "         Press the key for the tile where your target letter has moved.",
-        ]
-        y = board_rect.bottom + 30
-        for line in steps:
-            surf = self._font_small.render(line, True, config.TEXT_COLOR)
+        y = steps_top_y
+        for line in steps_text:
+            surf = self._font_small.render(
+                line.format(tgt=example_target), True, config.TEXT_COLOR)
             s.blit(surf, surf.get_rect(midleft=(cx - 380, y)))
-            y += 30
+            y += step_line_h
 
-        # Controls bar at the bottom
         controls = "SPACE  practice (unlimited)      ENTER  start 60-second scored run      ESC  quit"
         ctrl = self._font_small.render(controls, True, config.HUD_COLOR)
-        s.blit(ctrl, ctrl.get_rect(center=(cx, config.WINDOW_H - 40)))
+        s.blit(ctrl, ctrl.get_rect(center=(cx, controls_y)))
 
     def _make_example_view(self, target: str) -> HexView:
         """Build a fake stage-1 HexView showing the layout with `target`

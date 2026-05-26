@@ -26,7 +26,7 @@ from .config import GameConfig
 
 class InputEventType(Enum):
     SLOT = auto()      # a slot-key (Q/W/E/A/S/D etc.) was pressed
-    ADVANCE = auto()   # advance phase (welcome -> familiarize, results -> welcome)
+    ADVANCE = auto()   # SPACE — context-sensitive: start practice / back to welcome
     START_SCORED = auto()  # familiarization -> countdown -> scored
     QUIT = auto()      # user wants to quit
     WINDOW_CLOSE = auto()  # window's close button

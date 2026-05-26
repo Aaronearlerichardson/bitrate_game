@@ -78,7 +78,9 @@ def _handle_event(ev: InputEvent, mode: GameMode, session: Session) -> bool:
         return False
 
     if ev.type == InputEventType.ADVANCE:
-        # Welcome -> familiarization, or Results -> Welcome.
+        # SPACE is context-sensitive: starts practice from welcome,
+        # returns to welcome from every other phase (including aborting
+        # an in-progress scored run). See Session.on_advance().
         session.on_advance()
         if session.phase == Phase.FAMILIARIZATION:
             mode.reset()

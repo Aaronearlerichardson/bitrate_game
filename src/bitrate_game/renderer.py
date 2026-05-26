@@ -495,13 +495,14 @@ class PygameHexRenderer:
         y = config.WINDOW_H - 36
 
         if st.phase == Phase.FAMILIARIZATION:
-            top = "FAMILIARIZATION  —  practice as long as you like.  ENTER  start scored run  •  ESC  quit"
+            top = "FAMILIARIZATION  —  practice as long as you like.  ENTER  scored run  •  SPACE  menu  •  ESC  quit"
             stage_msg = self._stage_msg(view)
             self._blit_two_lines(top, stage_msg, cx, y)
         elif st.phase == Phase.COUNTDOWN:
-            self._blit_centered("Get ready...", cx, y)
+            self._blit_two_lines("Get ready...", "SPACE  abort  •  ESC  quit", cx, y)
         elif st.phase == Phase.SCORED:
-            self._blit_centered(self._stage_msg(view), cx, y)
+            self._blit_two_lines(self._stage_msg(view),
+                                 "SPACE  abort  •  ESC  quit", cx, y)
 
     def _stage_msg(self, view: HexView) -> str:
         if view.stage == HexStage.GROUP_SELECT:

@@ -235,13 +235,23 @@ class Session:
         return self._tracker
 
     def on_advance(self) -> None:
-        """User pressed the 'advance' key. Meaning depends on current phase."""
+        """User pressed the 'advance' key (SPACE). Context-sensitive:
+
+          WELCOME          -> FAMILIARIZATION  (start practice)
+          FAMILIARIZATION  -> WELCOME          (back to menu)
+          COUNTDOWN        -> WELCOME          (abort before the run starts)
+          SCORED           -> WELCOME          (abort mid-run; stats discarded)
+          RESULTS          -> WELCOME          (start over)
+        """
         if self._phase == Phase.WELCOME:
             self._tracker.reset()
             self._tracker.start()
             self._enter(Phase.FAMILIARIZATION)
-        elif self._phase == Phase.RESULTS:
-            # Allow restart for back-to-back grader runs without quitting.
+        else:
+            # Any non-welcome phase = back to welcome. Pause the tracker
+            # first so an aborted SCORED run doesn't keep accumulating
+            # time, then reset everything for a fresh start.
+            self._tracker.pause()
             self._tracker.reset()
             self._final_snapshot = None
             self._enter(Phase.WELCOME)

@@ -55,6 +55,17 @@ jobs:
       - name: Install runtime deps
         run: pip install "pygame>=2.5"
 
+      # The pygame wheel bundles every SDL satellite (mixer/image), every
+      # audio backend (Pulse/ALSA/JACK/...), and every codec — Nuitka picks
+      # them up via real dynamic-link inspection regardless of any Python-
+      # level --nofollow-import-to we pass. Physically removing them from
+      # the installed pygame is the only reliable way to keep them out of
+      # the final binary. See scripts/strip_pygame.py for the rationale and
+      # the exact list (cross-checked against pygame/__init__.py's
+      # try/except wrappers).
+      - name: Strip unused pygame submodules and bundled libs
+        run: python scripts/strip_pygame.py
+
       # --- Nuitka build via Nuitka-Action (Option A) ---
       #
       # Slim flags drop everything the game doesn't use. Verified by grepping
@@ -78,8 +89,12 @@ jobs:
           include-package: bitrate_game
 
           lto: yes
-          # ~5 MB win on Linux. Windows is always static; macOS may not honor.
-          static-libpython: auto
+          # 'yes' forces static-link of libpython. Previously 'auto' fell
+          # back to dynamic on the Linux runner (libpython3.13.so.1.0 ended
+          # up bundled, ~6.8 MB). setup-python@v5's Linux build ships the
+          # static archive at ${pythonLocation}/lib/python3.X/config-.../
+          # libpython3.X.a — if 'yes' errors, fall back to 'auto'.
+          static-libpython: yes
           python-flag: no_site,no_asserts,no_warnings,no_docstrings
 
           # Aggressive exclude list. Beyond the audio submodules and stdlib

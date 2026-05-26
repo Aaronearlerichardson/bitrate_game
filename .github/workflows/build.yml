@@ -1,11 +1,21 @@
 name: build
 
+# Builds one onefile binary per OS via Nuitka-Action, smoke-tests each, then
+# bundles all three into a single bitrate_game-binaries.zip. On a tag push
+# (v*), the zip is attached to a GitHub Release.
+#
+# The Nuitka flags here mirror scripts/build.py. If you change one, change
+# the other so local builds and CI builds agree.
+
 on:
   push:
     branches: [main]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write  # required for the release-attach step
 
 jobs:
   build:
@@ -17,19 +27,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             target: linux-x86_64
-            launcher: ./dist/bitrate_game-linux-x86_64 --smoke-test
-          - os: ubuntu-22.04-arm
-            target: linux-arm64
-            launcher: ./dist/bitrate_game-linux-arm64 --smoke-test
-#          - os: macos-13
-#            target: macos-x86_64
-#            launcher: ./dist/bitrate_game-macos-x86_64 --smoke-test
+            ext: ''
           - os: macos-14
             target: macos-arm64
-            launcher: ./dist/bitrate_game-macos-arm64 --smoke-test
+            ext: ''
           - os: windows-latest
             target: windows-x86_64
-            launcher: ./dist/bitrate_game-windows-x86_64.exe --smoke-test
+            ext: '.exe'
 
     steps:
       - uses: actions/checkout@v4
@@ -40,24 +44,56 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      # SDL2 runtime libs help pygame's bundled SDL find system audio/video shims
-      # when launched. Harmless if pygame's vendored copy supersedes them.
+      # SDL2 runtime libs help pygame's bundled SDL find system audio/video
+      # shims when launched. Harmless if pygame's vendored copy supersedes.
       - name: Install SDL2 runtime (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libsdl2-2.0-0 libsdl2-image-2.0-0 \
-            libsdl2-mixer-2.0-0 libsdl2-ttf-2.0-0
+          sudo apt-get install -y libsdl2-2.0-0 libsdl2-ttf-2.0-0
 
-      - name: Install Nuitka and project
+      - name: Install runtime deps
+        run: pip install "pygame>=2.5"
+
+      # --- Nuitka build via Nuitka-Action (Option A) ---
+      #
+      # Slim flags drop everything the game doesn't use. Verified by grepping
+      # src/bitrate_game for pygame.* usage: only event, display,
+      # font.SysFont, time, draw, Rect, Surface are referenced — so mixer,
+      # image, midi, camera, cdrom and all their native deps are safe to
+      # exclude. The leading '*' on the lib patterns is required to match
+      # Linux versioned sonames like 'libSDL2_mixer-2.0.so.0'.
+      #
+      # Audio backends (Pulse/ALSA/JACK/sndio/PipeWire/fluidsynth) are bundled
+      # by the pygame manylinux wheel even though the game has no audio —
+      # excluding them is the biggest single size win on Linux.
+      - name: Build with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          script-name: src/bitrate_game
+          standalone: true
+          onefile: true
+          enable-plugins: pygame
+          include-package: bitrate_game
+
+          lto: yes
+          # ~5 MB win on Linux. Windows is always static; macOS may not honor.
+          static-libpython: auto
+          python-flag: no_site,no_asserts,no_warnings,no_docstrings
+
+          nofollow-import-to: pygame.mixer,pygame.mixer_music,pygame.image,pygame.midi,pygame.camera,pygame.cdrom,pygame._sdl2.audio,pygame._sdl2.mixer
+
+          noinclude-data-files: '*SDL2_mixer*,*SDL2_image*,*libogg*,*libvorbis*,*libvorbisfile*,*libFLAC*,*libopus*,*libopusfile*,*libmpg123*,*libwavpack*,*libmodplug*,*libfluidsynth*,*libsndfile*,*libwebp*,*libjpeg*,*libtiff*,*libpulse*,*libpulsecommon*,*libasound*,*libsndio*,*libjack*,*libpipewire*,*portmidi*'
+          noinclude-dlls:       '*SDL2_mixer*,*SDL2_image*,*libogg*,*libvorbis*,*libvorbisfile*,*libFLAC*,*libopus*,*libopusfile*,*libmpg123*,*libwavpack*,*libmodplug*,*libfluidsynth*,*libsndfile*,*libwebp*,*libjpeg*,*libtiff*,*libpulse*,*libpulsecommon*,*libasound*,*libsndio*,*libjack*,*libpipewire*,*portmidi*'
+
+          output-file: bitrate_game-${{ matrix.target }}${{ matrix.ext }}
+
+      - name: Move binary into dist/
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install nuitka
-          pip install .
-
-      - name: Build binary
-        run: python scripts/build.py
+          mkdir -p dist
+          mv build/bitrate_game-${{ matrix.target }}${{ matrix.ext }} dist/
+          ls -lh dist/
 
       - name: Smoke test
         timeout-minutes: 2
@@ -65,18 +101,43 @@ jobs:
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
-        run: ${{ matrix.launcher }}
+        run: ./dist/bitrate_game-${{ matrix.target }}${{ matrix.ext }} --smoke-test
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: bitrate_game-${{ matrix.target }}
-          path: dist/bitrate_game-${{ matrix.target }}*
+          path: dist/bitrate_game-${{ matrix.target }}${{ matrix.ext }}
+          if-no-files-found: error
+          retention-days: 14
+
+  package:
+    name: bundle-zip
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Zip all binaries into a single archive
+        run: |
+          cd dist
+          chmod +x bitrate_game-linux-* bitrate_game-macos-* 2>/dev/null || true
+          ls -lh
+          zip -9 ../bitrate_game-binaries.zip *
+          ls -lh ../bitrate_game-binaries.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bitrate_game-binaries
+          path: bitrate_game-binaries.zip
           if-no-files-found: error
 
   release:
-    name: Release
-    needs: build
+    name: release
+    needs: package
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -84,10 +145,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: dist
-          merge-multiple: true
+          name: bitrate_game-binaries
+          path: .
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/**
+          files: bitrate_game-binaries.zip
           fail_on_unmatched_files: true

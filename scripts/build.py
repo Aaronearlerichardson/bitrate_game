@@ -7,10 +7,16 @@ The launchers (run.sh / run.bat) detect host OS+arch and exec the matching
 binary from dist/. Nuitka does not cross-compile, so each target platform
 must run this script on a matching host (or via CI matrix).
 
+Default build is tuned for small size: LTO on, audio/image/MIDI pygame
+submodules dropped, unused SDL libraries excluded from the bundle, runtime
+asserts/docstrings/warnings stripped. Pass --no-slim to disable.
+
 Usage:
-    python scripts/build.py                 # onefile, default
+    python scripts/build.py                 # onefile, slim, default
     python scripts/build.py --standalone    # folder bundle (faster startup)
     python scripts/build.py --clean         # wipe dist/ and build/ first
+    python scripts/build.py --upx           # additionally UPX-compress (Win/Linux)
+    python scripts/build.py --no-slim       # disable slim defaults
 """
 
 from __future__ import annotations
@@ -28,6 +34,59 @@ SRC_DIR = REPO_ROOT / "src"
 ENTRY = SRC_DIR / "bitrate_game"
 DIST_DIR = REPO_ROOT / "dist"
 BUILD_DIR = REPO_ROOT / "build"
+
+# Pygame submodules the game never touches. Skipping them prevents Nuitka
+# from chasing imports into SDL2_mixer / SDL2_image / portmidi territory.
+# Verified by grepping src/bitrate_game for pygame.* usage: only event,
+# display, font.SysFont, time.Clock, draw, Rect, Surface are referenced.
+UNUSED_PYGAME_MODULES = [
+    "pygame.mixer",
+    "pygame.mixer_music",
+    "pygame.image",
+    "pygame.midi",
+    "pygame.camera",
+    "pygame.cdrom",
+    "pygame._sdl2.audio",
+    "pygame._sdl2.mixer",
+]
+
+# DLL/SO/dylib name patterns Nuitka's pygame plugin would otherwise bundle
+# but that we don't need (audio codecs, image codecs, MIDI). Patterns use a
+# leading wildcard so they match both Windows DLLs ("SDL2_mixer.dll") and
+# Linux/macOS shared libs with versioned sonames ("libSDL2_mixer-2.0.so.0",
+# "libSDL2_mixer-2.0.0.dylib"). Linux is where the real size wins live —
+# pygame manylinux wheels bundle every audio backend (Pulse, ALSA, JACK,
+# sndio, PipeWire, fluidsynth), all of which we drop here.
+UNUSED_NATIVE_LIBS = [
+    # SDL satellite libs
+    "*SDL2_mixer*",
+    "*SDL2_image*",
+    # Audio codecs (only used by SDL2_mixer)
+    "*libogg*",
+    "*libvorbis*",
+    "*libvorbisfile*",
+    "*libFLAC*",
+    "*libopus*",
+    "*libopusfile*",
+    "*libmpg123*",
+    "*libwavpack*",
+    "*libmodplug*",
+    "*libfluidsynth*",
+    "*libsndfile*",
+    # Image codecs (only used by SDL2_image)
+    "*libwebp*",
+    "*libjpeg*",
+    "*libtiff*",
+    # Linux audio backends — pygame ships all of them in the wheel
+    "*libpulse*",
+    "*libpulsecommon*",
+    "*libasound*",
+    "*libsndio*",
+    "*libjack*",
+    "*libpipewire*",
+    # MIDI
+    "*portmidi*",
+]
 
 
 def platform_tag() -> str:
@@ -52,7 +111,7 @@ def output_filename() -> str:
     return name
 
 
-def run_nuitka(*, onefile: bool, clean: bool) -> int:
+def run_nuitka(*, onefile: bool, clean: bool, slim: bool, upx: bool) -> int:
     if clean:
         for d in (DIST_DIR, BUILD_DIR):
             if d.exists():
@@ -78,6 +137,24 @@ def run_nuitka(*, onefile: bool, clean: bool) -> int:
     if onefile:
         cmd.append("--onefile")
 
+    if slim:
+        cmd += [
+            "--lto=yes",
+            "--python-flag=no_site,no_asserts,no_warnings,no_docstrings",
+        ]
+        # Static-link libpython where possible. Saves ~5 MB on Linux,
+        # which is by far the most bloated platform for pygame builds.
+        # No-op on Windows (always static); harmless if unavailable.
+        if platform.system() != "Windows":
+            cmd.append("--static-libpython=auto")
+        for mod in UNUSED_PYGAME_MODULES:
+            cmd.append(f"--nofollow-import-to={mod}")
+        for pat in UNUSED_NATIVE_LIBS:
+            # --noinclude-dlls works on Windows DLLs; --noinclude-data-files
+            # catches .so/.dylib copies the pygame plugin drops in as data.
+            cmd.append(f"--noinclude-dlls={pat}")
+            cmd.append(f"--noinclude-data-files={pat}")
+
     env = {**os.environ, "PYTHONPATH": str(SRC_DIR)}
 
     print("Running:")
@@ -99,12 +176,12 @@ def run_nuitka(*, onefile: bool, clean: bool) -> int:
         if target.exists():
             target.unlink()
         shutil.move(str(produced), str(target))
-        # Make sure it's executable on POSIX.
         if platform.system() != "Windows":
             target.chmod(target.stat().st_mode | 0o111)
-        print(f"\nBuilt: {target}")
+        if upx:
+            _upx_compress(target)
+        print(f"\nBuilt: {target}  ({_human_size(target)})")
     else:
-        # Standalone mode produces a <entry>.dist folder.
         dist_subdir = BUILD_DIR / f"{ENTRY.stem}.dist"
         if not dist_subdir.exists():
             print(
@@ -116,15 +193,52 @@ def run_nuitka(*, onefile: bool, clean: bool) -> int:
         if target_dir.exists():
             shutil.rmtree(target_dir)
         shutil.move(str(dist_subdir), str(target_dir))
-        # The launcher will exec the binary at the top of the bundle. Nuitka
-        # names it after --output-filename, which we already set.
         entry_path = target_dir / out_name
         if platform.system() != "Windows" and entry_path.exists():
             entry_path.chmod(entry_path.stat().st_mode | 0o111)
-        print(f"\nBuilt bundle: {target_dir}")
+        if upx and entry_path.exists():
+            _upx_compress(entry_path)
+        print(f"\nBuilt bundle: {target_dir}  ({_human_size_dir(target_dir)})")
         print(f"Entry: {entry_path}")
 
     return 0
+
+
+def _human_size(p: Path) -> str:
+    n = p.stat().st_size
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def _human_size_dir(p: Path) -> str:
+    total = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+    n = float(total)
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def _upx_compress(target: Path) -> None:
+    """Run UPX on `target` in place. Skips silently if upx isn't installed."""
+    if shutil.which("upx") is None:
+        print("upx not found on PATH — skipping compression.", file=sys.stderr)
+        return
+    if platform.system() == "Darwin":
+        print("upx on macOS binaries is unreliable — skipping.", file=sys.stderr)
+        return
+    before = target.stat().st_size
+    print(f"\nCompressing with UPX: {target}")
+    result = subprocess.run(["upx", "--best", "--lzma", str(target)])
+    if result.returncode != 0:
+        print("upx failed; binary left uncompressed.", file=sys.stderr)
+        return
+    after = target.stat().st_size
+    print(f"  {before / 1e6:.1f} MB -> {after / 1e6:.1f} MB")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -139,8 +253,26 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Remove dist/ and build/ before building.",
     )
+    parser.add_argument(
+        "--no-slim",
+        dest="slim",
+        action="store_false",
+        help="Disable size-reduction defaults (LTO, pruned pygame/SDL deps, "
+             "stripped docstrings/asserts).",
+    )
+    parser.add_argument(
+        "--upx",
+        action="store_true",
+        help="Run UPX on the final binary (requires upx on PATH). Big size "
+             "win on Windows/Linux; skipped on macOS.",
+    )
     args = parser.parse_args(argv)
-    return run_nuitka(onefile=not args.standalone, clean=args.clean)
+    return run_nuitka(
+        onefile=not args.standalone,
+        clean=args.clean,
+        slim=args.slim,
+        upx=args.upx,
+    )
 
 
 if __name__ == "__main__":

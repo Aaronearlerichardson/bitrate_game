@@ -101,10 +101,19 @@ about pygame or rendering at all.
 path the launchers look up:
 
 ```bash
-python scripts/build.py              # onefile (default)
+python scripts/build.py              # onefile, slim defaults
 python scripts/build.py --standalone # folder bundle, faster cold start
 python scripts/build.py --clean      # wipe dist/ and build/ first
+python scripts/build.py --upx        # additionally UPX-compress (Win/Linux)
+python scripts/build.py --no-slim    # disable size-reduction defaults
 ```
+
+The slim defaults (on unless `--no-slim`) apply `--lto=yes`, strip
+docstrings/asserts/warnings, drop unused pygame submodules
+(`mixer`, `image`, `midi`, `camera`, `cdrom`), and exclude the matching
+native libraries (SDL2_mixer, SDL2_image, portmidi, audio codecs). The
+game only uses `pygame.event`, `pygame.display`, `pygame.font.SysFont`,
+`pygame.time`, and `pygame.draw`, so these exclusions are safe.
 
 Output:
 

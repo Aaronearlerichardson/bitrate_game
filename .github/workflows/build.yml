@@ -71,9 +71,10 @@ jobs:
         uses: Nuitka/Nuitka-Action@main
         with:
           script-name: src/bitrate_game
-          standalone: true
-          onefile: true
-          enable-plugins: pygame
+          # 'mode: onefile' replaces the old standalone+onefile pair. The
+          # 'pygame' plugin no longer exists in current Nuitka — pygame is
+          # auto-detected, so we do NOT pass enable-plugins.
+          mode: onefile
           include-package: bitrate_game
 
           lto: yes
@@ -83,8 +84,13 @@ jobs:
 
           nofollow-import-to: pygame.mixer,pygame.mixer_music,pygame.image,pygame.midi,pygame.camera,pygame.cdrom,pygame._sdl2.audio,pygame._sdl2.mixer
 
+          # Nuitka-Action only exposes --noinclude-data-files (not
+          # --noinclude-dlls). Bundled SDL .so/.dylib files on Linux/macOS are
+          # picked up as data files by the auto-detected pygame handling, so
+          # this single list covers the platforms where the wheel is bloated.
+          # On Windows, vendored DLLs may slip through — acceptable since the
+          # Windows binary was already ~9.7 MB.
           noinclude-data-files: '*SDL2_mixer*,*SDL2_image*,*libogg*,*libvorbis*,*libvorbisfile*,*libFLAC*,*libopus*,*libopusfile*,*libmpg123*,*libwavpack*,*libmodplug*,*libfluidsynth*,*libsndfile*,*libwebp*,*libjpeg*,*libtiff*,*libpulse*,*libpulsecommon*,*libasound*,*libsndio*,*libjack*,*libpipewire*,*portmidi*'
-          noinclude-dlls:       '*SDL2_mixer*,*SDL2_image*,*libogg*,*libvorbis*,*libvorbisfile*,*libFLAC*,*libopus*,*libopusfile*,*libmpg123*,*libwavpack*,*libmodplug*,*libfluidsynth*,*libsndfile*,*libwebp*,*libjpeg*,*libtiff*,*libpulse*,*libpulsecommon*,*libasound*,*libsndio*,*libjack*,*libpipewire*,*portmidi*'
 
           output-file: bitrate_game-${{ matrix.target }}${{ matrix.ext }}
 

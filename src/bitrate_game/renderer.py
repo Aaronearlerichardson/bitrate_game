@@ -1,4 +1,4 @@
-"""Pygame renderer for the Hex-o-Spell mode.
+"""Pygame renderer for GridQuest.
 
 The Renderer protocol below describes the contract: given a SessionState and
 a mode-specific view, draw it. Implementations own their backend's lifecycle
@@ -19,7 +19,7 @@ from typing import Optional, Protocol
 from . import config
 from .config import GameConfig
 from .core import Phase, SessionState
-from .mode import HexSlotView, HexStage, HexView
+from .mode import GridSlotView, GridStage, GridView
 
 
 # -----------------------------------------------------------------------------
@@ -33,23 +33,27 @@ class Renderer(Protocol):
 
 
 # -----------------------------------------------------------------------------
-# Pygame Hex renderer
+# Pygame GridQuest renderer
 # -----------------------------------------------------------------------------
 
-class PygameHexRenderer:
-    """Renders Hex-o-Spell + session HUD with pygame.
+class PygameGridRenderer:
+    """Renders the GridQuest 3x3 board + session HUD with pygame.
 
     Layout:
 
-        +-----------------------------------------------+
-        |  [slot Q]      [slot W]      [slot E]         |
-        |                                               |
-        |               [ central HUD ]                 |
-        |                                               |
-        |  [slot A]      [slot S]      [slot D]         |
-        |                                               |
-        |  bottom bar: phase-specific instructions      |
-        +-----------------------------------------------+
+        +---------------------------------------------------+
+        |  [Q]      [W]      [E]                            |
+        |                                                   |
+        |  [A]      [S]      [D]    (central HUD with cue)  |
+        |                                                   |
+        |  [Z]      [X]      [C]                            |
+        |                                                   |
+        |  bottom bar: phase-specific instructions          |
+        +---------------------------------------------------+
+
+    Each tile shows its key letter (Q/W/E/A/S/D/Z/X/C) in the corner.
+    Stage 1: the tile whose group contains the target gets a yellow border.
+    Stage 2: the target tile gets a yellow border.
     """
 
     def __init__(self, cfg: GameConfig) -> None:
@@ -71,7 +75,7 @@ class PygameHexRenderer:
     def init(self) -> None:
         pg = self._pygame
         pg.init()
-        pg.display.set_caption("Bitrate Game — Hex-o-Spell")
+        pg.display.set_caption("GridQuest — bit-rate game")
 
         # Fit the window to the host display so it never overflows on
         # smaller laptops or under DPI scaling. pygame.display.Info()
@@ -91,6 +95,7 @@ class PygameHexRenderer:
         # config.WINDOW_W / WINDOW_H each frame, so the UI reflows on the
         # next draw without any extra signalling.
         self._screen = pg.display.set_mode((fit_w, fit_h), pg.RESIZABLE)
+
         # SysFont(None, ...) picks a reasonable system font on every platform
         # without bundling a TTF.
         self._font_huge = pg.font.SysFont(None, 160)
@@ -126,9 +131,9 @@ class PygameHexRenderer:
         elif phase == Phase.RESULTS:
             self._draw_results(session_state)
         else:
-            assert isinstance(mode_view, HexView), \
-                f"renderer expected HexView, got {type(mode_view).__name__}"
-            self._draw_hex_board(session_state, mode_view)
+            assert isinstance(mode_view, GridView), \
+                f"renderer expected GridView, got {type(mode_view).__name__}"
+            self._draw_grid_board(session_state, mode_view)
 
         self._pygame.display.flip()
 
@@ -137,14 +142,14 @@ class PygameHexRenderer:
     # ====================================================================
 
     def _draw_welcome(self) -> None:
-        """Title + preview board with a worked example + controls.
+        """Title + a scaled-down live gameplay board (with an example
+        target highlighted) + step text + controls.
 
-        Layout is adaptive: titles anchor to the top, the controls bar
-        anchors to the bottom, the step list anchors above the controls,
-        and the example board fills whatever vertical space remains in
-        between. This way the controls/steps never collide on shorter
-        windows (e.g. when the auto-fit lands at 88% of a 768p screen)
-        and the example board grows when the user enlarges the window.
+        The example board is rendered with the *same* code as gameplay,
+        so the player sees exactly what they'll see in practice. Layout
+        is adaptive: titles anchor to the top, the controls bar anchors
+        to the bottom, the step list anchors above the controls, and the
+        example panel fills whatever vertical space remains in between.
         """
         s = self._screen
         cx = config.WINDOW_W // 2
@@ -154,82 +159,71 @@ class PygameHexRenderer:
         subtitle_y = 95
         controls_y = config.WINDOW_H - 30
 
-        # Steps: 4 lines stacked just above the controls bar.
         steps_text = [
-            "STEP 1   Find the YELLOW target letter ({tgt!r}). It lives inside one tile.",
-            "         Press the key labeled on that tile — its corner shows Q/W/E/A/S/D.",
-            "STEP 2   The chosen tile's letters then spread across all six tiles, one per tile.",
-            "         Press the key for the tile where your target letter has moved.",
+            "STEP 1   Find the YELLOW square — it lives inside one of the 9 tiles.",
+            "         Press the key (Q/W/E/A/S/D/Z/X/C) for that tile.",
+            "STEP 2   That tile's inner 3×3 becomes the outer 3×3.",
+            "         Press the key for the position the yellow square sat in.",
         ]
         step_line_h = 28
-        # Bottom of the last step's *center* — its text descends ~13px
-        # further, so leave at least 30px between center and controls
-        # to keep a comfortable visible gap.
         steps_bottom_y = controls_y - 45
         steps_top_y = steps_bottom_y - step_line_h * (len(steps_text) - 1)
 
-        # Board: fills the space between subtitle and the step list.
-        board_top = subtitle_y + 25
-        board_bottom = steps_top_y - 25
-        board_h = max(180, min(360, board_bottom - board_top))
-        board_w = min(760, config.WINDOW_W - 100)
-        board_cy = (board_top + board_bottom) // 2
+        # Panel: fills the space between subtitle and the step list.
+        panel_top = subtitle_y + 25
+        panel_bottom = steps_top_y - 25
+        panel_h = max(220, min(420, panel_bottom - panel_top))
+        panel_w = min(panel_h, config.WINDOW_W - 100)  # keep board square
+        panel_cy = (panel_top + panel_bottom) // 2
 
         # --- Draw ----------------------------------------------------------
-        title = self._font_large.render("Hex-o-Spell Bit-Rate Game",
-                                        True, config.TEXT_COLOR)
+        title = self._font_large.render("GridQuest", True, config.TEXT_COLOR)
         s.blit(title, title.get_rect(center=(cx, title_y)))
 
         subtitle = self._font_small.render(
-            f"Type one letter at a time using two key presses.   "
-            f"Alphabet: {self._cfg.n} characters in {self._cfg.num_groups} groups of {self._cfg.group_size}.",
+            f"Two keypresses per selection. "
+            f"N = {self._cfg.n} targets "
+            f"({self._cfg.num_tiles} outer × {self._cfg.num_tiles} inner).",
             True, config.MUTED_TEXT_COLOR)
         s.blit(subtitle, subtitle.get_rect(center=(cx, subtitle_y)))
 
-        example_target = "e" if "e" in self._cfg.alphabet else self._cfg.alphabet[0]
+        # Render the actual gameplay board, but at panel scale and with a
+        # fixed example target. Picking a target slightly off-center so
+        # the highlight is visually interesting.
+        example_target = (self._cfg.n // 2) + (self._cfg.num_tiles // 2) - 4
         example_view = self._make_example_view(example_target)
-        board_rect = self._pygame.Rect(0, 0, board_w, board_h)
-        board_rect.center = (cx, board_cy)
-        rects = self._slot_rects(board_rect, gutter=14, margin=0)
-        self._draw_slots_in(
-            example_view, rects,
-            big_font=self._font_preview_big,
-            small_font=self._font_preview_small,
-            flash_active=False,
-        )
-
-        prompt = self._font_small.render("EXAMPLE TARGET", True, config.MUTED_TEXT_COLOR)
-        s.blit(prompt, prompt.get_rect(center=(cx, board_rect.centery - 18)))
-        tgt = self._font_large.render(example_target.upper(),
-                                       True, config.TARGET_HIGHLIGHT_COLOR)
-        s.blit(tgt, tgt.get_rect(center=(cx, board_rect.centery + 22)))
+        board_rect = self._pygame.Rect(0, 0, panel_w, panel_h)
+        board_rect.center = (cx, panel_cy)
+        rects = self._slot_rects(board_rect=board_rect, gutter=10, margin=0)
+        self._draw_slots_in(example_view, rects, flash_active=False)
 
         y = steps_top_y
         for line in steps_text:
-            surf = self._font_small.render(
-                line.format(tgt=example_target), True, config.TEXT_COLOR)
+            surf = self._font_small.render(line, True, config.TEXT_COLOR)
             s.blit(surf, surf.get_rect(midleft=(cx - 380, y)))
             y += step_line_h
 
-        controls = "SPACE  practice (unlimited)      ENTER  start 60-second scored run      ESC  quit"
+        controls = ("SPACE  practice (unlimited)      "
+                    "ENTER  start 60-second scored run      "
+                    "ESC  quit")
         ctrl = self._font_small.render(controls, True, config.HUD_COLOR)
         s.blit(ctrl, ctrl.get_rect(center=(cx, controls_y)))
 
-    def _make_example_view(self, target: str) -> HexView:
-        """Build a fake stage-1 HexView showing the layout with `target`
-        highlighted. Used only on the welcome screen as a visual primer."""
-        slots: list[HexSlotView] = []
-        for g in range(self._cfg.num_groups):
-            chars = tuple(self._cfg.chars_in_group(g))
-            slots.append(HexSlotView(
-                chars=chars,
-                contains_target=(target in chars),
-                is_target_letter=False,
-            ))
-        return HexView(
-            stage=HexStage.GROUP_SELECT,
-            target_char=target,
-            slots=tuple(slots),
+    def _make_example_view(self, target: int) -> GridView:
+        """Fake GridView for the welcome-screen preview — a stage-1 view
+        with `target` cued."""
+        target_group, _ = divmod(target, self._cfg.num_tiles)
+        slots = tuple(
+            GridSlotView(
+                is_target_group=(g == target_group),
+                is_target_tile=False,
+            )
+            for g in range(self._cfg.num_tiles)
+        )
+        return GridView(
+            stage=GridStage.GROUP_SELECT,
+            target=target,
+            slots=slots,
             active_group_idx=None,
             last_feedback_correct=None,
             last_feedback_at=0.0,
@@ -242,16 +236,26 @@ class PygameHexRenderer:
     def _draw_results(self, st: SessionState) -> None:
         s = self._screen
         cx = config.WINDOW_W // 2
+        H = config.WINDOW_H
         snap = st.final_snapshot
         if snap is None:
             return
 
+        # Anchors: title near top, hint near bottom, big bps roughly a
+        # quarter of the way down between them, breakdown lines packed
+        # between the bps and the hint. Line height is capped at 42 so
+        # the layout doesn't look stretched on tall windows, but shrinks
+        # to fit on short ones — no overlap at WINDOW_H >= 580.
+        title_y = max(60, int(H * 0.10))
+        hint_y = H - 30
+        big_y = title_y + (hint_y - title_y) // 4
+
         title = self._font_large.render("Run complete", True, config.TEXT_COLOR)
-        s.blit(title, title.get_rect(center=(cx, 140)))
+        s.blit(title, title.get_rect(center=(cx, title_y)))
 
         bps_str = f"{snap.bit_rate:.2f} bits / sec"
         big = self._font_huge.render(bps_str, True, config.TARGET_HIGHLIGHT_COLOR)
-        s.blit(big, big.get_rect(center=(cx, 320)))
+        s.blit(big, big.get_rect(center=(cx, big_y)))
 
         breakdown = [
             f"N (alphabet size) = {snap.n}",
@@ -260,33 +264,33 @@ class PygameHexRenderer:
             f"t (elapsed seconds) = {snap.elapsed_sec:.2f}",
             f"B = log2(N-1) * max(S_c - S_i, 0) / t",
         ]
+        block_top = big_y + big.get_height() // 2 + 40
+        block_bottom = hint_y - 40
+        gaps = max(1, len(breakdown) - 1)
+        line_h = max(28, min(42, (block_bottom - block_top) // gaps))
         for i, line in enumerate(breakdown):
             surf = self._font_medium.render(line, True, config.TEXT_COLOR)
-            s.blit(surf, surf.get_rect(center=(cx, 460 + i * 42)))
+            s.blit(surf, surf.get_rect(center=(cx, block_top + i * line_h)))
 
         hint = self._font_small.render(
             "SPACE  return to welcome screen     ESC  quit",
             True, config.MUTED_TEXT_COLOR)
-        s.blit(hint, hint.get_rect(center=(cx, config.WINDOW_H - 60)))
+        s.blit(hint, hint.get_rect(center=(cx, hint_y)))
 
     # ====================================================================
     # Gameplay board
     # ====================================================================
 
-    def _draw_hex_board(self, st: SessionState, view: HexView) -> None:
-        # Full-window board with default margins.
+    def _draw_grid_board(self, st: SessionState, view: GridView) -> None:
         rects = self._slot_rects(board_rect=None)
         flash_active = self._flash_is_active(view)
-        self._draw_slots_in(view, rects,
-                            big_font=self._font_huge,
-                            small_font=self._font_large,
-                            flash_active=flash_active)
+        self._draw_slots_in(view, rects, flash_active=flash_active)
         self._draw_hud(st, view)
         self._draw_bottom_bar(st, view)
         if st.phase == Phase.COUNTDOWN:
             self._draw_countdown_overlay(st)
 
-    def _flash_is_active(self, view: HexView) -> bool:
+    def _flash_is_active(self, view: GridView) -> bool:
         if view.last_feedback_correct is None:
             return False
         return (time.monotonic() - view.last_feedback_at) < config.FEEDBACK_FLASH_SEC
@@ -294,10 +298,11 @@ class PygameHexRenderer:
     # --- slot rectangles ------------------------------------------------
 
     def _slot_rects(self, board_rect=None, gutter: int = 30, margin: int = 80):
-        """Return 6 slot rects laid out in a 3x2 grid.
+        """Return num_tiles rects laid out in a sqrt(num_tiles) square.
 
-        If `board_rect` is None, fill the window minus default margins.
-        Otherwise lay out within the given rect.
+        For num_tiles=9, that's a 3x3 grid. If `board_rect` is None, fill
+        the window minus default margins; otherwise lay out within the
+        given rect.
         """
         pg = self._pygame
         if board_rect is None:
@@ -311,12 +316,12 @@ class PygameHexRenderer:
             board_w = board_rect.width
             board_h = board_rect.height
 
-        cols, rows = 3, 2
-        w = (board_w - (cols - 1) * gutter) // cols
-        h = (board_h - (rows - 1) * gutter) // rows
+        side = max(int(self._cfg.num_tiles ** 0.5), 1)  # 3 for num_tiles=9
+        w = (board_w - (side - 1) * gutter) // side
+        h = (board_h - (side - 1) * gutter) // side
         rects: list = []
-        for r in range(rows):
-            for c in range(cols):
+        for r in range(side):
+            for c in range(side):
                 x = x0 + c * (w + gutter)
                 y = y0 + r * (h + gutter)
                 rects.append(pg.Rect(x, y, w, h))
@@ -324,23 +329,28 @@ class PygameHexRenderer:
 
     # --- slot drawing ---------------------------------------------------
 
-    def _draw_slots_in(self, view: HexView, rects, *, big_font, small_font,
+    def _draw_slots_in(self, view: GridView, rects, *,
                        flash_active: bool) -> None:
-        """Render each of the 6 tiles into the supplied rectangles.
+        """Render each of the num_tiles tiles.
 
         Visual rules:
-          * Every tile shows its key letter (Q/W/E/A/S/D) in the corner so
-            the keyboard mapping is always visible.
-          * In stage 1: the slot containing the target letter gets a
-            highlighted border + tinted background. Its target letter is
-            colored yellow.
-          * In stage 2: every tile shows a single big letter; the one that
-            equals the target is colored yellow.
-          * On a recent selection: every tile flashes green (correct) or red
-            (incorrect) briefly.
+          * Every tile shows its key letter in the corner.
+          * Stage 1: every tile draws a 3x3 mini-grid of dim cells inside.
+            The target tile additionally fills its `target_slot` mini-cell
+            with yellow — that's the cue. (No separate HUD cue board:
+            the tiles themselves are the cue.)
+          * Stage 2: the chosen group's mini-grid has "expanded" to fill
+            the whole outer board. Each tile = one inner position of the
+            chosen group. The target tile shows a single big yellow square
+            at its center; other tiles are empty.
+          * On a recent selection: every tile flashes green (correct) or
+            red (incorrect) briefly.
         """
         pg = self._pygame
         s = self._screen
+        side = max(int(self._cfg.num_tiles ** 0.5), 1)
+        target_slot = view.target % self._cfg.num_tiles
+
         for idx, rect in enumerate(rects):
             slot = view.slots[idx]
 
@@ -348,15 +358,16 @@ class PygameHexRenderer:
             border = config.TILE_BORDER_COLOR
             border_w = 3
 
-            # Stage-1 target-home highlight: very visible cue for new players.
-            if view.stage == HexStage.GROUP_SELECT and slot.contains_target:
-                # Subtle tint + bold yellow border.
+            if view.stage == GridStage.GROUP_SELECT and slot.is_target_group:
                 base = (44, 50, 64)
                 border = config.TARGET_HIGHLIGHT_COLOR
                 border_w = 5
-            # Stage-2 tinted border so it's obvious we're in stage 2.
-            elif view.stage == HexStage.LETTER_SELECT:
+            elif view.stage == GridStage.TILE_SELECT:
                 border = config.TILE_ACTIVE_COLOR
+                if slot.is_target_tile:
+                    base = (44, 50, 64)
+                    border = config.TARGET_HIGHLIGHT_COLOR
+                    border_w = 5
 
             if flash_active:
                 base = (
@@ -367,27 +378,76 @@ class PygameHexRenderer:
 
             pg.draw.rect(s, base, rect, border_radius=18)
             pg.draw.rect(s, border, rect, width=border_w, border_radius=18)
-
-            # Always-on key label in the tile's top-left corner.
             self._draw_key_label(rect, self._cfg.slot_keys[idx])
 
-            # Tile contents.
-            if not slot.chars:
-                continue
-            if len(slot.chars) == 1:
-                self._draw_single_char(rect, slot.chars[0],
-                                       slot.is_target_letter, big_font)
-            else:
-                self._draw_group_chars(
-                    rect, slot.chars, view.target_char,
-                    highlight_target=(view.stage == HexStage.GROUP_SELECT),
-                    font=small_font,
+            # Tile contents per stage.
+            if view.stage == GridStage.GROUP_SELECT:
+                hl = target_slot if slot.is_target_group else None
+                self._draw_inner_grid(rect, side=side, highlight_idx=hl)
+            elif slot.is_target_tile:
+                # Stage 2: the chosen group's inner cell that was the target
+                # has "zoomed up" to fill this tile. Show a single yellow
+                # square at the tile's center.
+                sq_size = int(min(rect.width, rect.height) * 0.45)
+                sq = pg.Rect(0, 0, sq_size, sq_size)
+                sq.center = rect.center
+                pg.draw.rect(s, config.TARGET_HIGHLIGHT_COLOR, sq,
+                             border_radius=8)
+
+    def _draw_inner_grid(self, rect, side: int, *,
+                         highlight_idx: Optional[int]) -> None:
+        """Draw a side×side mini-grid of cells inside `rect`.
+
+        Highlights the cell at `highlight_idx` (row-major 0..side²-1) with
+        TARGET_HIGHLIGHT_COLOR. Other cells are drawn as faint dim squares
+        so the structure stays visible even when no target sits here.
+
+        The mini-grid is kept square and centered within the tile's interior,
+        with extra top padding to clear the key label in the corner.
+        """
+        pg = self._pygame
+        s = self._screen
+        # Padding chosen to give the mini-grid as much room as possible
+        # while still clearing the key-label box in the top-left corner.
+        # The label spans rect.x..rect.x+~40 in x and rect.y+8..rect.y+42
+        # in y, so a 40-px top pad keeps the grid below it. The grid is
+        # then horizontally centered with 8-px side gutters, which puts it
+        # to the right of the label without colliding.
+        pad_top = 40
+        pad_other = 8
+        avail_x = rect.x + pad_other
+        avail_y = rect.y + pad_top
+        avail_w = rect.width - 2 * pad_other
+        avail_h = rect.bottom - avail_y - pad_other
+        if avail_w <= 0 or avail_h <= 0:
+            return
+
+        cell_size = min(avail_w, avail_h) // side
+        if cell_size < 6:
+            return  # too small to render meaningfully
+
+        grid_size = cell_size * side
+        grid_x = avail_x + (avail_w - grid_size) // 2
+        grid_y = avail_y + (avail_h - grid_size) // 2
+
+        faint = (60, 66, 80)
+        gap = max(2, cell_size // 10)
+        for r in range(side):
+            for c in range(side):
+                idx = r * side + c
+                cell_rect = pg.Rect(
+                    grid_x + c * cell_size + gap,
+                    grid_y + r * cell_size + gap,
+                    cell_size - 2 * gap,
+                    cell_size - 2 * gap,
                 )
+                color = (config.TARGET_HIGHLIGHT_COLOR
+                         if idx == highlight_idx else faint)
+                pg.draw.rect(s, color, cell_rect, border_radius=3)
 
     def _draw_key_label(self, rect, key_char: str) -> None:
         """Small key letter in the top-left of a tile (e.g. 'Q')."""
         font = self._font_tiny
-        # Background pill for legibility against the tile color.
         text = font.render(key_char.upper(), True, config.HUD_COLOR)
         pad_x, pad_y = 10, 6
         bg = self._pygame.Rect(
@@ -399,54 +459,16 @@ class PygameHexRenderer:
                                 width=1, border_radius=6)
         self._screen.blit(text, (bg.x + pad_x, bg.y + pad_y))
 
-    def _draw_single_char(self, rect, ch: str, is_target: bool, font) -> None:
-        color = config.TARGET_HIGHLIGHT_COLOR if is_target else config.TEXT_COLOR
-        surf = font.render(ch, True, color)
-        self._screen.blit(surf, surf.get_rect(center=rect.center))
-
-    def _draw_group_chars(self, rect, chars, target_char, *,
-                           highlight_target: bool, font) -> None:
-        """Render the group's chars in a 2-row x 3-col mini-grid.
-
-        The mini-grid mirrors the full board's 3-col x 2-row slot arrangement,
-        so chars[0..5] sit at the same relative positions they will occupy
-        when the group expands into stage 2. This trains the player's spatial
-        expectation: a target seen in the bottom-right of its group will
-        appear in the bottom-right slot of the board after the first press.
-        """
-        s = self._screen
-        cols, rows = 3, 2
-        cell_w = rect.width / cols
-        cell_h = rect.height / rows
-        for i, ch in enumerate(chars):
-            col = i % cols
-            row = i // cols
-            cx = rect.x + cell_w * (col + 0.5)
-            cy = rect.y + cell_h * (row + 0.5)
-            color = config.TEXT_COLOR
-            if highlight_target and ch == target_char:
-                color = config.TARGET_HIGHLIGHT_COLOR
-            surf = font.render(ch, True, color)
-            s.blit(surf, surf.get_rect(center=(int(cx), int(cy))))
-
     # --- HUD ------------------------------------------------------------
 
-    def _draw_hud(self, st: SessionState, view: HexView) -> None:
+    def _draw_hud(self, st: SessionState, view: GridView) -> None:
+        # The cue itself lives INSIDE the tiles (see _draw_slots_in), so
+        # the HUD only carries the live bit-rate readout and the scored
+        # countdown timer.
         s = self._screen
-        cx = config.WINDOW_W // 2
-        cy = config.WINDOW_H // 2
 
-        # Target prompt (always shown during play)
-        prompt = self._font_small.render("TARGET", True, config.MUTED_TEXT_COLOR)
-        s.blit(prompt, prompt.get_rect(center=(cx, cy - 24)))
-        tgt = self._font_large.render(view.target_char.upper(),
-                                       True, config.TARGET_HIGHLIGHT_COLOR)
-        s.blit(tgt, tgt.get_rect(center=(cx, cy + 18)))
-
-        # Live bit-rate readout (top-left, out of the tile area).
         self._draw_live_bitrate(st)
 
-        # Top-right timer during scored
         if st.phase == Phase.SCORED:
             t = f"{st.scored_remaining:4.1f}s"
             timer = self._font_medium.render(t, True, config.HUD_COLOR)
@@ -483,33 +505,32 @@ class PygameHexRenderer:
 
     # --- bottom bar -----------------------------------------------------
 
-    def _draw_bottom_bar(self, st: SessionState, view: HexView) -> None:
+    def _draw_bottom_bar(self, st: SessionState, view: GridView) -> None:
         """Phase- and stage-specific instructional text.
 
         During play, the bottom bar always tells the player what action is
         expected RIGHT NOW. This is the second line of defense after the
         target-tile highlight — eyes have something to read if they're lost.
         """
-        s = self._screen
         cx = config.WINDOW_W // 2
         y = config.WINDOW_H - 36
 
         if st.phase == Phase.FAMILIARIZATION:
-            top = "FAMILIARIZATION  —  practice as long as you like.  ENTER  scored run  •  SPACE  menu  •  ESC  quit"
-            stage_msg = self._stage_msg(view)
-            self._blit_two_lines(top, stage_msg, cx, y)
+            top = ("FAMILIARIZATION  —  practice as long as you like.  "
+                   "ENTER  scored run  •  SPACE  menu  •  ESC  quit")
+            self._blit_two_lines(top, self._stage_msg(view), cx, y)
         elif st.phase == Phase.COUNTDOWN:
             self._blit_two_lines("Get ready...", "SPACE  abort  •  ESC  quit", cx, y)
         elif st.phase == Phase.SCORED:
             self._blit_two_lines(self._stage_msg(view),
                                  "SPACE  abort  •  ESC  quit", cx, y)
 
-    def _stage_msg(self, view: HexView) -> str:
-        if view.stage == HexStage.GROUP_SELECT:
-            return ("STEP 1  —  press the key (Q/W/E/A/S/D) for the tile "
-                    "containing the highlighted target letter.")
-        return ("STEP 2  —  press the key for the tile where the "
-                "highlighted target letter is now.")
+    def _stage_msg(self, view: GridView) -> str:
+        if view.stage == GridStage.GROUP_SELECT:
+            return ("STEP 1  —  press the key for the tile "
+                    "containing the YELLOW square.")
+        return ("STEP 2  —  press the key for the position "
+                "the YELLOW square was in.")
 
     def _blit_centered(self, text: str, cx: int, y: int) -> None:
         surf = self._font_small.render(text, True, config.MUTED_TEXT_COLOR)

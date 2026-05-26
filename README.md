@@ -1,7 +1,7 @@
 # bitrate_game
 
-A Hex-o-Spell-inspired typing game that maximizes the BCI-style achieved
-bit rate (Shenoy et al. 2021):
+**GridQuest** — a spatial-selection game that maximizes the BCI-style
+achieved bit rate (Shenoy et al. 2021):
 
 ```
 B = log2(N - 1) * max(S_c - S_i, 0) / t
@@ -27,8 +27,8 @@ Or right-click the binary in Finder → **Open** → **Open Anyway**.
 
 ```
    Q  W  E
-      HUD
    A  S  D
+   Z  X  C
 ```
 
 - **SPACE** — start practice from welcome; return to welcome from anywhere else
@@ -36,16 +36,23 @@ Or right-click the binary in Finder → **Open** → **Open Anyway**.
 - **ENTER** — start the 60-second scored run (from welcome or practice)
 - **ESC** — quit
 
-Each target is selected in two keypresses: press the tile containing the
-yellow target letter, then press the tile its letter expanded to.
+Each target is selected in two keypresses: read the cue (a mini 9×9 board
+with one cell highlighted in yellow), press the key for the **outer** 3×3
+group containing it, then press the key for the **inner** position the
+target sat in.
 
 ## Design notes
 
-- **N = 36** (six groups × six letters). `log2(35) ≈ 5.13` bits per selection.
-- Cues are i.i.d. uniform — no language model, no predictive text.
-- Q/W/E/A/S/D map spatially to tile positions; same six keys for both stages.
-- Invalid keys are ignored, not penalized — we're benchmarking the selection
-  paradigm, not typing accuracy.
+- **N = 81** (9 outer groups × 9 inner positions). `log2(80) ≈ 6.32` bits
+  per selection — the spatial encoding squeezes more information out of
+  each two-key chord than the 6-tile letter version did.
+- Cues are i.i.d. uniform — no language model, no patterns.
+- Q/W/E/A/S/D/Z/X/C map spatially to the 3×3 tile positions; same nine
+  keys for both stages, so motor vocabulary stays tiny.
+- Pure spatial selection — no letters, no language. Works for any
+  alphabet, any locale.
+- Invalid keys are ignored, not penalized — we're benchmarking the
+  selection paradigm, not typing accuracy.
 
 ## Build from source
 
@@ -63,10 +70,10 @@ each target OS, or let `.github/workflows/build.yml`'s matrix do it.
 ```
 src/bitrate_game/
   core.py       Session, BitRateTracker, TargetSource  (UI-free logic)
-  mode.py       HexOSpellMode + GameMode protocol
+  mode.py       GridQuestMode + GameMode protocol
   adapters.py   PygameKeyboardAdapter + InputAdapter protocol
-  renderer.py   PygameHexRenderer + Renderer protocol
-  config.py     all tunables (alphabet, keys, timing, colors)
+  renderer.py   PygameGridRenderer + Renderer protocol
+  config.py     all tunables (grid size, keys, timing, colors)
   main.py       wires the components together
 ```
 

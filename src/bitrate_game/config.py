@@ -1,50 +1,44 @@
 """Single source of truth for game tunables.
 
-All design parameters live here so swapping alphabets, key layouts, or timings
-doesn't require touching game logic.
+All design parameters live here so swapping key layouts, grid size, or
+timings doesn't require touching game logic.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
 
 # -----------------------------------------------------------------------------
-# Hex-o-Spell layout
+# GridQuest layout
 # -----------------------------------------------------------------------------
-# Six selection slots arranged as a 3x2 grid (with a central HUD). Each slot
-# holds GROUP_SIZE characters in stage 1. After the first key, the chosen
-# group's characters expand into the same six slots for stage 2.
+# Nine selection tiles arranged as a 3x3 grid. Each selection takes two
+# keypresses:
+#   * key 1 picks one of 9 outer "groups" (which 3x3 cell of the mini-9x9
+#     reference board contains the target).
+#   * key 2 picks one of 9 inner positions within that group.
 #
-# N = NUM_GROUPS * GROUP_SIZE.  Bit-rate formula uses log2(N - 1).
+# N = NUM_TILES * NUM_TILES = 81.  Bit-rate formula uses log2(N - 1).
 
-NUM_GROUPS: int = 6
-GROUP_SIZE: int = 6  # -> N = 36, log2(35) ≈ 5.129 bits per selection
-
-# The alphabet must satisfy len(ALPHABET) == NUM_GROUPS * GROUP_SIZE.
-# 26 letters + 10 digits gives a clean alphanumeric set of 36 — extending the
-# target inventory beyond the keyboard's letter row lifts the per-selection
-# information content (log2(N-1) bits) without changing the two-step
-# selection mechanic. Order doesn't matter for the i.i.d. property.
-ALPHABET: tuple[str, ...] = tuple("abcdefghijklmnopqrstuvwxyz0123456789")
+NUM_TILES: int = 9  # 3x3 grid of selection tiles, reused for both stages
 
 
 # -----------------------------------------------------------------------------
 # Key bindings
 # -----------------------------------------------------------------------------
-# Six logical "slot keys". Order corresponds to slot index 0..5:
+# Nine logical "slot keys", spatially mapped to the 3x3 grid:
 #
 #       slot 0 (NW)   slot 1 (N)   slot 2 (NE)
-#                       HUD
-#       slot 3 (SW)   slot 4 (S)   slot 5 (SE)
+#       slot 3 (W)    slot 4 (C)   slot 5 (E)
+#       slot 6 (SW)   slot 7 (S)   slot 8 (SE)
 #
-# Same keys are reused for both stages of the two-step selection.
+# Same nine keys are reused for both stages of the two-step selection.
 
-SLOT_KEYS: tuple[str, ...] = ("q", "w", "e", "a", "s", "d")
+SLOT_KEYS: tuple[str, ...] = ("q", "w", "e", "a", "s", "d", "z", "x", "c")
 
 # Control keys (string names, mapped to backend key codes by the adapter)
-KEY_ADVANCE: str = "space"   # advance from welcome / familiarization start
+KEY_ADVANCE: str = "space"        # context-sensitive: start practice / back to welcome
 KEY_START_SCORED: str = "return"  # start the scored 60-second run
 KEY_QUIT: str = "escape"
 
@@ -87,43 +81,42 @@ class GameConfig:
     """Frozen snapshot of config for passing into the game.
 
     Stored as a dataclass so swapping the active config (e.g. for a smaller
-    alphabet during development) is a one-line change in main.py.
+    grid during development) is a one-line change in main.py.
     """
-    alphabet: tuple[str, ...] = ALPHABET
-    num_groups: int = NUM_GROUPS
-    group_size: int = GROUP_SIZE
+    num_tiles: int = NUM_TILES
     slot_keys: tuple[str, ...] = SLOT_KEYS
     scored_duration_sec: float = SCORED_DURATION_SEC
     countdown_sec: float = COUNTDOWN_SEC
 
     @property
     def n(self) -> int:
-        return len(self.alphabet)
+        """Total number of distinguishable targets: 9 * 9 = 81."""
+        return self.num_tiles * self.num_tiles
+
+    @property
+    def alphabet(self) -> Sequence[int]:
+        """Target alphabet: integers 0..n-1.
+
+        Each target T decomposes as `divmod(T, num_tiles) -> (group, slot)`.
+        Exposed so TargetSource implementations can be alphabet-agnostic.
+        """
+        return range(self.n)
 
     def __post_init__(self) -> None:
-        if self.n != self.num_groups * self.group_size:
+        if len(self.slot_keys) != self.num_tiles:
             raise ValueError(
-                f"alphabet length {self.n} != num_groups * group_size "
-                f"({self.num_groups} * {self.group_size})"
+                f"slot_keys has {len(self.slot_keys)} keys, expected "
+                f"{self.num_tiles}"
             )
-        if len(self.slot_keys) != self.num_groups:
+        if self.num_tiles < 2:
             raise ValueError(
-                f"slot_keys has {len(self.slot_keys)} keys, expected {self.num_groups}"
+                f"num_tiles must be >= 2 for two-stage selection, got "
+                f"{self.num_tiles}"
             )
         if self.n < 3:
-            raise ValueError(f"N must be >= 3 for positive bit rate, got {self.n}")
-
-    def group_of(self, char: str) -> int:
-        """Return which group index a character belongs to."""
-        return self.alphabet.index(char) // self.group_size
-
-    def index_in_group(self, char: str) -> int:
-        """Return the position (0..group_size-1) of a character within its group."""
-        return self.alphabet.index(char) % self.group_size
-
-    def chars_in_group(self, group_idx: int) -> Sequence[str]:
-        start = group_idx * self.group_size
-        return self.alphabet[start : start + self.group_size]
+            raise ValueError(
+                f"N must be >= 3 for positive bit rate, got {self.n}"
+            )
 
 
 DEFAULT_CONFIG: GameConfig = GameConfig()

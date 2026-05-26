@@ -87,6 +87,13 @@ jobs:
           # auto-detected, so we do NOT pass enable-plugins.
           mode: onefile
           include-package: bitrate_game
+          # `--python-flag=no_site` skips site.py at startup, but Nuitka's
+          # own init code still tries to import `warnings` — and without
+          # site.py loading it first, the bundled-module registry doesn't
+          # know about it, producing a cosmetic "ModuleNotFoundError: No
+          # module named 'warnings'" on every launch. Explicitly bundling
+          # the warnings module silences that without giving up no_site.
+          include-module: warnings
 
           lto: yes
           # Tried 'yes' to force static-link of libpython (would save ~6.8 MB
@@ -159,9 +166,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 'pattern' filters out nuitka-report-* artifacts so only the actual
+      # binaries land in dist/ for zipping. The reports stay available as
+      # separate artifacts for diagnostics.
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: bitrate_game-*
           merge-multiple: true
 
       - name: Zip all binaries into a single archive

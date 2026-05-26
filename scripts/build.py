@@ -165,7 +165,12 @@ def run_nuitka(*, onefile: bool, clean: bool, slim: bool, upx: bool) -> int:
     if slim:
         cmd += [
             "--lto=yes",
-            "--python-flag=no_site,no_asserts,no_warnings,no_docstrings",
+            # 'no_warnings' would strip the warnings module loader, which
+            # CPython's startup tries to `import warnings` regardless and
+            # then prints "'import warnings' failed; ModuleNotFoundError"
+            # to stderr on every launch. 'no_site' similarly off because
+            # site.py setup happens around the same init step.
+            "--python-flag=no_asserts,no_docstrings",
         ]
         # Static-link libpython where possible. Saves ~5 MB on Linux,
         # which is by far the most bloated platform for pygame builds.

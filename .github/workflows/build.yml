@@ -104,13 +104,15 @@ jobs:
           # installation". 'auto' falls back to dynamic where static isn't
           # available; strip_pygame.py alone gets us under the size budget.
           static-libpython: auto
-          # Dropped 'no_site' from this list: it skips site.py at startup,
-          # which in turn means CPython's _Py_InitializeMain never sets up
-          # the warnings filter properly and prints "'import warnings'
-          # failed; ModuleNotFoundError" on every launch (cosmetic but
-          # confusing for end users). Size cost is ~10 KB. The other three
-          # flags strip asserts/warning-emission/docstrings — safe.
-          python-flag: no_asserts,no_warnings,no_docstrings
+          # We also drop 'no_warnings' from this list: that flag tells
+          # Nuitka to skip the warnings module entirely, but CPython's
+          # _Py_InitializeMain calls `import warnings` regardless and
+          # prints "'import warnings' failed; ModuleNotFoundError" to
+          # stderr on every launch when it can't find it. The include-
+          # module above isn't enough — the flag wins. Cost of putting
+          # warnings back: ~10 KB.
+          # 'no_site' similarly off because it can break the early init.
+          python-flag: no_asserts,no_docstrings
 
           # Aggressive exclude list. Beyond the audio submodules and stdlib
           # dead weight, also drops pygame's numpy-coupled views (surfarray,
